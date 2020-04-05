@@ -1,2 +1,6 @@
 data/
 /data/*
+*.pyc
+*-checkpoint.ipynb
+.vscode/
+*dummy.py

@@ -6,6 +6,7 @@ from torch.nn import functional as F
 class SelfAttn(nn.Module):
     '''
     self-attention with learnable parameters
+    make a single continuous representation for a sentence.
     '''
 
     def __init__(self, dhid):
@@ -13,7 +14,13 @@ class SelfAttn(nn.Module):
         self.scorer = nn.Linear(dhid, 1)
 
     def forward(self, inp):
+        '''
+        inp: shape (B, T, *)
+        '''
+        # shape (B, T, 1), per word score normalized across each sentence
         scores = F.softmax(self.scorer(inp), dim=1)
+        # shape (B, 1, T) bmm shape (B, T, *)
+        # = shape (B, 1, *).squeeze(1) = shape (B, *)
         cont = scores.transpose(1, 2).bmm(inp).squeeze(1)
         return cont
 
@@ -120,6 +127,7 @@ class ConvFrameMaskDecoder(nn.Module):
         self.attn_dropout = nn.Dropout(attn_dropout)
         self.hstate_dropout = nn.Dropout(hstate_dropout)
         self.actor_dropout = nn.Dropout(actor_dropout)
+        # a learned initial action embedding to speed up learning
         self.go = nn.Parameter(torch.Tensor(demb))
         self.actor = nn.Linear(dhid+dhid+dframe+demb, demb)
         self.mask_dec = MaskDecoder(dhid=dhid+dhid+dframe+demb, pframe=self.pframe)
@@ -281,6 +289,103 @@ class ConvFrameMaskDecoderProgressMonitor(nn.Module):
             'out_attn_scores': torch.stack(attn_scores, dim=1),
             'out_subgoal': torch.stack(subgoals, dim=1),
             'out_progress': torch.stack(progresses, dim=1),
+            'state_t': state_t
+        }
+        return results
+
+
+class LanguageDecoder(nn.Module):
+    '''
+    Language (instr / goal/ both) decoder
+    '''
+
+    def __init__(self, emb, dhid, attn_dropout=0., hstate_dropout=0.,
+                 word_dropout=0., input_dropout=0., teacher_forcing=False):
+        
+        super().__init__()
+        # args.demb
+        demb = emb.weight.size(1)
+
+        # embedding module for words
+        self.emb = emb
+        # hidden layer size
+        self.dhid = dhid
+        # LSTM cell, unroll one time step per call
+        self.cell = nn.LSTMCell(dhid+demb, dhid)
+        # attn to encoder output
+        self.attn = DotAttn()
+        # dropout concat input to LSTM cell
+        self.input_dropout = nn.Dropout(input_dropout)
+        # dropout on encoder output, before attn is applied
+        self.attn_dropout = nn.Dropout(attn_dropout)
+        # dropout on hidden state passed between steps
+        self.hstate_dropout = nn.Dropout(hstate_dropout)
+        # dropout on word fc
+        self.word_dropout = nn.Dropout(word_dropout)
+        # a learned initial word embedding to speed up learning
+        self.go = nn.Parameter(torch.Tensor(demb)) # TODO replace by <start> ??
+        # word fc per time step
+        self.word = nn.Linear(dhid+demb, demb)
+        self.teacher_forcing = teacher_forcing
+        self.h_tm1_fc = nn.Linear(dhid, dhid)
+
+        nn.init.uniform_(self.go, -0.1, 0.1)
+
+    def step(self, enc, e_t, state_tm1):
+        # previous decoder hidden state
+        h_tm1 = state_tm1[0]
+
+        # encode action feat
+        act_feat_t = enc # actions are encoded once at the start
+
+        # attend over actions
+        weighted_act_t, act_attn_t = self.attn(self.attn_dropout(act_feat_t), self.h_tm1_fc(h_tm1))
+
+        # concat weight act, and previous word embedding
+        inp_t = torch.cat([weighted_act_t, e_t], dim=1)
+        inp_t = self.input_dropout(inp_t)
+
+        # update hidden state
+        state_t = self.cell(inp_t, state_tm1)
+        state_t = [self.hstate_dropout(x) for x in state_t]
+        h_t, c_t = state_t[0], state_t[1]
+
+        # decode next word
+        cont_t = torch.cat([h_t, inp_t], dim=1)
+        # (B, demb)
+        word_emb_t = self.word(self.word_dropout(cont_t))
+        # (B, demb).mm(demb, vocab size) = (B, vocab size)
+        word_t = word_emb_t.mm(self.emb.weight.t())
+
+        return word_t, state_t, act_attn_t
+
+    def forward(self, enc, gold=None, max_decode=150, state_0=None):
+        '''
+        enc : (B, T, args.dhid). LSTM encoder per action output
+        gold: (B, T). padded_sequence of word index tokens.
+        max_decode: integer. maximum timesteps - length of language instruction.
+        state_0: tuple (cont_act, torch.zeros.like(cont_act)).
+        '''
+        max_t = gold.size(1) if self.training else min(max_decode, frames.shape[1])
+        batch = enc.size(0)
+        e_t = self.go.repeat(batch, 1)
+        state_t = state_0
+
+        words = []
+        attn_scores = []
+        for t in range(max_t):
+            word_t, state_t, attn_score_t = self.step(enc, e_t, state_t)
+            words.append(word_t)
+            attn_scores.append(attn_score_t)
+            if self.teacher_forcing and self.training:
+                w_t = gold[:, t]
+            else:
+                w_t = word_t.max(1)[1]
+            e_t = self.emb(w_t)
+
+        results = {
+            'out_lang_instr': torch.stack(words, dim=1),
+            'out_attn_scores': torch.stack(attn_scores, dim=1),
             'state_t': state_t
         }
         return results

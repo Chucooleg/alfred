@@ -39,7 +39,7 @@ class Module(Base):
         # dropouts
         self.vis_dropout = nn.Dropout(args.vis_dropout)
         self.lang_dropout = nn.Dropout(args.lang_dropout, inplace=True)
-        self.input_dropout = nn.Dropout(args.input_dropout)
+        self.input_dropout = nn.Dropout(args.input_dropout)  # obsolete?
 
         # internal states
         self.state_t = None
@@ -314,7 +314,7 @@ class Module(Base):
 
         # subgoal completion loss
         if self.args.subgoal_aux_loss_wt > 0:
-            p_subgoal = feat['out_subgoal'].squeeze(2)
+            p_subgoal = out['out_subgoal'].squeeze(2)
             l_subgoal = feat['subgoals_completed']
             sg_loss = self.mse_loss(p_subgoal, l_subgoal)
             sg_loss = sg_loss.view(-1) * pad_valid.float()
@@ -323,7 +323,7 @@ class Module(Base):
 
         # progress monitoring loss
         if self.args.pm_aux_loss_wt > 0:
-            p_progress = feat['out_progress'].squeeze(2)
+            p_progress = out['out_progress'].squeeze(2)
             l_progress = feat['subgoal_progress']
             pg_loss = self.mse_loss(p_progress, l_progress)
             pg_loss = pg_loss.view(-1) * pad_valid.float()
@@ -360,7 +360,9 @@ class Module(Base):
         '''
         m = collections.defaultdict(list)
         for task in data:
+            # annotation (ann_0/ann_1/ann_2) specific
             ex = self.load_task_json(task)
+            # NOT annotation specific
             i = ex['task_id']
             label = ' '.join([a['discrete_action']['action'] for a in ex['plan']['low_actions']])
             m['action_low_f1'].append(compute_f1(label.lower(), preds[i]['action_low'].lower()))

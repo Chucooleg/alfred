@@ -49,8 +49,9 @@ class Module(nn.Module):
 
         # splits
         train = splits['train']
-        valid_seen = splits['valid_seen']
-        valid_unseen = splits['valid_unseen']
+        # ann_0, ann_1 and ann_2 have the same action sequence, only ann_0 is needed for validation
+        valid_seen = [t for t in splits['valid_seen'] if t['repeat_idx'] == 0]
+        valid_unseen = [t for t in splits['valid_unseen'] if t['repeat_idx'] == 0]
 
         # debugging: chose a small fraction of the dataset
         if self.args.dataset_fraction > 0:
@@ -261,6 +262,22 @@ class Module(nn.Module):
         with open(json_path) as f:
             data = json.load(f)
         return data
+
+    def load_tasks_json(self, task):
+        '''
+        load preprocessed jsons from disk. 
+        all jsons with matching task index are loaded in order to gather all 3 versions of language annotations.
+        '''
+        dataset = []
+
+        for i in range(3):
+            json_path = os.path.join(self.args.data, task['task'], '%s' % self.args.pp_folder, 'ann_%d.json' % i)
+            if os.path.exists(json_path):
+                with open(json_path) as f:
+                    data = json.load(f)
+                    dataset.append(data)
+
+        return dataset
 
     def get_task_root(self, ex):
         '''
