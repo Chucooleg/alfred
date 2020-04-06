@@ -19,7 +19,7 @@ class Module(nn.Module):
 
         # sentinel tokens
         self.pad = 0
-        self.seg = 1
+        # self.seg = 1  # obsolete?
 
         # args and vocab
         self.args = args
@@ -29,9 +29,9 @@ class Module(nn.Module):
         self.emb_word = nn.Embedding(len(vocab['word']), args.demb)
         self.emb_action_low = nn.Embedding(len(vocab['action_low']), args.demb)
 
-        # end tokens
-        self.stop_token = self.vocab['action_low'].word2index("<<stop>>", train=False)
-        self.seg_token = self.vocab['action_low'].word2index("<<seg>>", train=False)
+        # end tokens TODO need to replace with stop token of language
+        self.stop_token = self.vocab['word'].word2index("<<stop>>", train=False)
+        # self.seg_token = self.vocab['action_low'].word2index("<<seg>>", train=False)  # obsolete?
 
         # set random seed (Note: this is not the seed used to initialize THOR object locations)
         random.seed(a=args.seed)

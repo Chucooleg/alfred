@@ -9,7 +9,7 @@ from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_se
 from model.seq2seq import Module as Base
 from models.utils.metric import compute_f1, compute_exact
 from gen.utils.image_util import decompress_mask
-import nltk.translate.bleu_score import corpus_bleu
+from nltk.translate.bleu_score import corpus_bleu
 
 class Seq2SeqNL(Base):
 
@@ -17,7 +17,7 @@ class Seq2SeqNL(Base):
         '''
         Seq2Seq agent
         '''
-        super(NLSeq2Seq, self).__init__(args, vocab)
+        super(Seq2SeqNL, self).__init__(args, vocab)
 
         # encoder and self-attention
         self.enc = nn.LSTM(args.demb, args.dhid, bidirectional=True, batch_first=True)
@@ -182,7 +182,7 @@ class Seq2SeqNL(Base):
         output processing
         '''
         pred = {}
-        # TODO check if .max(2)[1] is working
+        #  feat['out_lang_instr'] has shape (B, T, vocab size)
         for ex, lang_instr in zip(batch, feat['out_lang_instr'].max(2)[1].tolist()):
             # remove padding tokens
             if self.pad in lang_instr:
@@ -190,7 +190,6 @@ class Seq2SeqNL(Base):
                 lang_instr = lang_instr[:pad_start_idx]
 
             if clean_special_tokens:
-                # remove <<stop>> or <<end>> tokens # TODO
                 if self.stop_token in lang_instr:
                     stop_start_idx = lang_instr.index(self.stop_token)
                     lang_instr = lang_instr[:stop_start_idx]
@@ -253,6 +252,9 @@ class Seq2SeqNL(Base):
 
 # fix padding, what is self.pad, collide with any action index?
 # what is self.stop_token
+# pad with self.pad for everything in feat
+
+# How does action sequence in original get the <<stop>> token?
 
 # model architecture in vnn
 
