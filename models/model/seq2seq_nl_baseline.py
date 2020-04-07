@@ -158,19 +158,40 @@ class Module(Base):
         self.r_state = {
             'state_t': None,
             'e_t': None,
-            'cont_lang': None,
-            'enc_lang': None,
+            # 'cont_lang': None,
+            # 'enc_lang': None,
             'cont_act': None,
             'enc_act': None
         }
     
-    def step(self, feat, prev_action=None):
+    def step(self, feat, prev_word=None):
         '''
         forward the model for a single time-step (used for real-time execution during eval)
         '''
-        # TODO write code for FOR EVAL
-        pass
-    
+
+        # encode action features
+        if self.r_state['cont_act'] is None and self.r_state['enc_act'] is None:
+            self.r_state['cont_act'], self.r_state['enc_act'] = self.encode_act(feat)
+
+        # initialize embedding and hidden states
+        if self.r_state['e_t'] is None and self.r_state['state_t'] is None:
+            self.r_state['e_t'] = self.dec.go.repeat(self.r_state['enc_act'].size(0), 1)
+            self.r_state['state_t'] = self.r_state['cont_act'], torch.zeros_like(self.r_state['cont_act'])
+
+        # previous
+        e_t = self.embed_lang(prev_word) if prev_word is not None else self.r_state['e_t']
+
+        # decode and save embedding and hidden states
+        out_word_low, state_t, *_ = self.dec.step(self.r_state['enc_act'], e_t=e_t, state_tm1=self.r_state['state_t'])
+
+        # save states
+        self.r_state['state_t'] = state_t
+        self.r_state['e_t'] = self.dec.emb(out_word_low.max(1)[1])
+
+        # output formatting
+        feat['out_word_low'] = out_action_low.unsqueeze(0)
+        return feat
+
     def extract_preds(self, out, batch, feat, clean_special_tokens=True):
         '''
         output processing
@@ -191,16 +212,17 @@ class Module(Base):
             # index to word tokens
             words = self.vocab['word'].index2word(lang_instr)
 
-            pred[ex['task_id']] = {
-                'lang_instr': words
-                # 'lang_instr': ' '.join(words)
+            task_id_ann = self.get_task_and_ann_id(ex)
+            pred[task_id_ann] = {
+                'lang_instr': ' '.join(words)
             }
         
         return pred
 
-    def embed_lang(self, lang):
+    def embed_word(self, lang):
         '''
         embed language
+        called only in step -- eval_* modules
         '''
         device = torch.device('cuda') if self.args.gpu else torch.device('cpu')
         lang_num = torch.tensor(self.vocab['word'].word2index(lang), device=device)
@@ -240,10 +262,10 @@ class Module(Base):
             # grab data for ann_0, ann_1 and ann_2
             exs = self.load_tasks_json(task)
             # task_id is the same for ann_0, ann_1 and ann_2 
-            i = exs[0]['task_id']
+            i = self.get_task_and_ann_id(ex)
             # a list of 3 lists of word tokens. (1 for each human annotation, so total 3)
             ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]
-            m['lang_instr_bleu'].append(sentence_bleu(ref_lang_instrs, preds[i]['lang_instr']))
+            m['lang_instr_bleu'].append(sentence_bleu(ref_lang_instrs, preds[i]['lang_instr'].split(' ')))
         return {k: sum(v)/len(v) for k, v in m.items()}
 
 # TODO

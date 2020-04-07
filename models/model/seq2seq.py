@@ -239,6 +239,12 @@ class Module(nn.Module):
     def compute_metric(self, preds, data):
         raise NotImplementedError()
 
+    def get_task_and_ann_id(self, ex):
+        '''
+        single string for task_id and annotation repeat idx
+        '''
+        return "%s_%s" % (ex['task_id'], str(ex['repeat_idx']))
+
     def make_debug(self, preds, data):
         '''
         readable output generator for debugging
@@ -246,7 +252,7 @@ class Module(nn.Module):
         debug = {}
         for task in data:
             ex = self.load_task_json(task)
-            i = ex['task_id']
+            i = self.get_task_and_ann_id(ex)
             debug[i] = {
                 # Label - continuous language
                 'lang_goal': ex['turk_annotations']['anns'][ex['ann']['repeat_idx']]['task_desc'],
