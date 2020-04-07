@@ -8,16 +8,15 @@ from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 from model.seq2seq import Module as Base
 from models.utils.metric import compute_f1, compute_exact
-from gen.utils.image_util import decompress_mask
-from nltk.translate.bleu_score import corpus_bleu
+from nltk.translate.bleu_score import sentence_bleu
 
-class Seq2SeqNL(Base):
+class Module(Base):
 
     def __init__(self, args, vocab):
         '''
         Seq2Seq agent
         '''
-        super(Seq2SeqNL, self).__init__(args, vocab)
+        super().__init__(args, vocab)
 
         # encoder and self-attention
         self.enc = nn.LSTM(args.demb, args.dhid, bidirectional=True, batch_first=True)
@@ -33,17 +32,12 @@ class Seq2SeqNL(Base):
                            teacher_forcing=args.dec_teacher_forcing)
 
         # dropouts
-#         self.lang_dropout = nn.Dropout(args.lang_dropout, inplace=True)
         self.act_dropout = nn.Dropout(args.act_dropout, inplace=True)
 
         # internal states
         self.state_t = None
         self.e_t = None
         self.test_mode = False
-
-        # # bce reconstruction loss
-        # self.bce_with_logits = torch.nn.BCEWithLogitsLoss(reduction='none')
-        # self.mse_loss = torch.nn.MSELoss(reduction='none')
 
         # paths
         self.root_path = os.getcwd()
@@ -54,7 +48,7 @@ class Seq2SeqNL(Base):
         # reset model
         self.reset()
         
-    def featurize(batch):
+    def featurize(self, batch):
         '''tensoroze and pad batch input'''
     
         device = torch.device('cuda') if self.args.gpu else torch.device('cpu')
@@ -134,7 +128,7 @@ class Seq2SeqNL(Base):
         # encode entire sequence of low-level actions
         cont_act, enc_act = self.encode_act(feat)
         # run decoder until entire sentence is finished
-        state_0 = cont_act, torch.zeros.like(cont_act)
+        state_0 = cont_act, torch.zeros_like(cont_act)
         res = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0)
         feat.update(res)
         return feat
@@ -174,7 +168,7 @@ class Seq2SeqNL(Base):
         '''
         forward the model for a single time-step (used for real-time execution during eval)
         '''
-        # ONLY NEEDED FOR EVAL
+        # TODO write code for FOR EVAL
         pass
     
     def extract_preds(self, out, batch, feat, clean_special_tokens=True):
@@ -198,7 +192,8 @@ class Seq2SeqNL(Base):
             words = self.vocab['word'].index2word(lang_instr)
 
             pred[ex['task_id']] = {
-                'lang_instr': ' '.join(words)
+                'lang_instr': words
+                # 'lang_instr': ' '.join(words)
             }
         
         return pred
@@ -207,8 +202,11 @@ class Seq2SeqNL(Base):
         '''
         embed language
         '''
-        # ONLY NEEDED FOR EVAL
-        pass
+        device = torch.device('cuda') if self.args.gpu else torch.device('cpu')
+        lang_num = torch.tensor(self.vocab['word'].word2index(lang), device=device)
+        # point back to self.emb_word
+        lang_emb = self.dec.emb(lang_num).unsqueeze(0)
+        return lang_emb
     
     def compute_loss(self, out, batch, feat):
         '''
@@ -236,7 +234,7 @@ class Seq2SeqNL(Base):
         # how does this work during training with teacher forcing !?
         m = collections.defaultdict(list)
 
-        flatten_isntr = lambda instr: [word for sent in instr for word in sent]
+        flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
 
         for task in data:
             # grab data for ann_0, ann_1 and ann_2
@@ -245,18 +243,8 @@ class Seq2SeqNL(Base):
             i = exs[0]['task_id']
             # a list of 3 lists of word tokens. (1 for each human annotation, so total 3)
             ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]
-            m['lang_instr_bleu'].append(corpus_bleu(ref_lang_instrs, preds[i]['lang_instr']))
+            m['lang_instr_bleu'].append(sentence_bleu(ref_lang_instrs, preds[i]['lang_instr']))
         return {k: sum(v)/len(v) for k, v in m.items()}
 
-
-
-# fix padding, what is self.pad, collide with any action index?
-# what is self.stop_token
-# pad with self.pad for everything in feat
-
-# How does action sequence in original get the <<stop>> token?
-
-# model architecture in vnn
-
-# ???
-# the number of tasks should decrease by 1/3
+# TODO
+# eval only code (only eval 1/3 of tasks)

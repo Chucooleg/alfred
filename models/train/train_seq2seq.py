@@ -20,11 +20,11 @@ if __name__ == '__main__':
     # settings
     parser.add_argument('--seed', help='random seed', default=123, type=int)
     parser.add_argument('--data', help='dataset folder', default='data/json_feat_2.1.0')
-    parser.add_argument('--splits', help='json file containing train/dev/test splits', default='splits/oct21.json')
+    parser.add_argument('--splits', help='json file containing train/dev/test splits', default='data/splits/oct21.json')
     parser.add_argument('--preprocess', help='store preprocessed data to json files', action='store_true')
     parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
     parser.add_argument('--save_every_epoch', help='save model after every epoch (warning: consumes a lot of space)', action='store_true')
-    parser.add_argument('--model', help='model to use', default='seq2seq_im')
+    parser.add_argument('--model', help='model to use', default='seq2seq_nl_baseline')
     parser.add_argument('--gpu', help='use gpu', action='store_true')
     parser.add_argument('--dout', help='where to save model', default='exp/model:{model}')
     parser.add_argument('--resume', help='load a checkpoint')
@@ -46,6 +46,7 @@ if __name__ == '__main__':
     # dropouts
     parser.add_argument('--zero_goal', help='zero out goal language', action='store_true')
     parser.add_argument('--zero_instr', help='zero out step-by-step instr language', action='store_true')
+    parser.add_argument('--act_dropout', help='dropout rate for action input sequence', default=0., type=float)
     parser.add_argument('--lang_dropout', help='dropout rate for language (goal + instr)', default=0., type=float)
     parser.add_argument('--input_dropout', help='dropout rate for concatted input feats', default=0., type=float)
     parser.add_argument('--vis_dropout', help='dropout rate for Resnet feats', default=0.3, type=float)

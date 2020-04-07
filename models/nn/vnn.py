@@ -157,6 +157,7 @@ class ConvFrameMaskDecoder(nn.Module):
         h_t = state_t[0]
 
         # decode action and mask
+        # (B, dhid+ dhid+dframe+demb)
         cont_t = torch.cat([h_t, inp_t], dim=1)
         action_emb_t = self.actor(self.actor_dropout(cont_t))
         action_t = action_emb_t.mm(self.emb.weight.t())
@@ -325,7 +326,8 @@ class LanguageDecoder(nn.Module):
         # a learned initial word embedding to speed up learning
         self.go = nn.Parameter(torch.Tensor(demb)) # TODO replace by <start> ??
         # word fc per time step
-        self.word = nn.Linear(dhid+demb, demb)
+        # (1024 + 100, 100)
+        self.word = nn.Linear(dhid+dhid+demb, demb)
         self.teacher_forcing = teacher_forcing
         self.h_tm1_fc = nn.Linear(dhid, dhid)
 
@@ -351,6 +353,7 @@ class LanguageDecoder(nn.Module):
         h_t, c_t = state_t[0], state_t[1]
 
         # decode next word
+        # (B, dhid+ dhid+demb)
         cont_t = torch.cat([h_t, inp_t], dim=1)
         # (B, demb)
         word_emb_t = self.word(self.word_dropout(cont_t))
@@ -366,7 +369,7 @@ class LanguageDecoder(nn.Module):
         max_decode: integer. maximum timesteps - length of language instruction.
         state_0: tuple (cont_act, torch.zeros.like(cont_act)).
         '''
-        max_t = gold.size(1) if self.training else min(max_decode)
+        max_t = gold.size(1)
         batch = enc.size(0)
         e_t = self.go.repeat(batch, 1)
         state_t = state_0

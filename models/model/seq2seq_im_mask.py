@@ -282,6 +282,7 @@ class Module(Base):
         '''
         device = torch.device('cuda') if self.args.gpu else torch.device('cpu')
         action_num = torch.tensor(self.vocab['action_low'].word2index(action), device=device)
+        # point back to self.emb_action_low
         action_emb = self.dec.emb(action_num).unsqueeze(0)
         return action_emb
 

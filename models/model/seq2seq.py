@@ -19,7 +19,7 @@ class Module(nn.Module):
 
         # sentinel tokens
         self.pad = 0
-        # self.seg = 1  # obsolete?
+        self.seg = 1 
 
         # args and vocab
         self.args = args
@@ -145,7 +145,7 @@ class Module(nn.Module):
                 with open(fbest, 'wt') as f:
                     json.dump(stats, f, indent=2)
 
-                fpred = os.path.join(args.dout, 'valid_seen.debug.preds.json')
+                fpred = os.path.join(args.dout, 'valid_seen.debug_epoch_{}.preds.json'.format(epoch))
                 with open(fpred, 'wt') as f:
                     json.dump(self.make_debug(p_valid_seen, valid_seen), f, indent=2)
                 best_loss['valid_seen'] = total_valid_seen_loss
@@ -165,7 +165,7 @@ class Module(nn.Module):
                 with open(fbest, 'wt') as f:
                     json.dump(stats, f, indent=2)
 
-                fpred = os.path.join(args.dout, 'valid_unseen.debug.preds.json')
+                fpred = os.path.join(args.dout, 'valid_unseen.debug_epoch_{}.preds.json'.format(epoch))
                 with open(fpred, 'wt') as f:
                     json.dump(self.make_debug(p_valid_unseen, valid_unseen), f, indent=2)
 
@@ -185,7 +185,7 @@ class Module(nn.Module):
             }, fsave)
 
             # debug action output josn
-            fpred = os.path.join(args.dout, 'train.debug.preds.json')
+            fpred = os.path.join(args.dout, 'train.debug_epoch_{}.preds.json'.format(epoch))
             with open(fpred, 'wt') as f:
                 json.dump(self.make_debug(p_train, train), f, indent=2)
 
@@ -248,9 +248,21 @@ class Module(nn.Module):
             ex = self.load_task_json(task)
             i = ex['task_id']
             debug[i] = {
+                # Label - continuous language
                 'lang_goal': ex['turk_annotations']['anns'][ex['ann']['repeat_idx']]['task_desc'],
+                'lang_instr': ex['turk_annotations']['anns'][ex['ann']['repeat_idx']]['high_descs'],
+                # # Label - tokenized language (sanity check)
+                # 'word_inp_goal': ex['ann']['goal'],
+                # 'word_inp_instr': ex['ann']['instr'],
+                # 'num_inp_goal': ex['num']['lang_goal'],
+                # 'num_inp_instr': ex['num']['lang_instr'],
+                # Input - Low-level actions
                 'action_low': [a['discrete_action']['action'] for a in ex['plan']['low_actions']],
-                'p_action_low': preds[i]['action_low'].split(),
+                # Input - High-level actions
+                'action_high': [a['discrete_action']['action'] for a in ex['plan']['high_pddl']],
+                # Predicted - Language
+                'p_lang_instr': preds[i]['lang_instr']
+                # 'p_action_low': preds[i]['lang_instr'].split(),
             }
         return debug
 
