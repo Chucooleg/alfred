@@ -369,7 +369,7 @@ class LanguageDecoder(nn.Module):
         max_decode: integer. maximum timesteps - length of language instruction.
         state_0: tuple (cont_act, torch.zeros.like(cont_act)).
         '''
-        max_t = gold.size(1)
+        max_t = gold.size(1) if self.training else max_decode
         batch = enc.size(0)
         e_t = self.go.repeat(batch, 1)
         state_t = state_0
