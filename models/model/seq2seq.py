@@ -1,11 +1,13 @@
 import os
 import random
 import json
+import time
 import torch
 import pprint
 import collections
 import numpy as np
 from torch import nn
+from collections import defaultdict
 from tensorboardX import SummaryWriter
 from tqdm import trange
 
@@ -44,6 +46,11 @@ class Module(nn.Module):
         training loop
         '''
 
+        # time
+        time_report = defaultdict(int)
+        # time
+        start_time = time.time()
+
         # args
         args = args or self.args
 
@@ -78,17 +85,24 @@ class Module(nn.Module):
         # optimizer
         optimizer = optimizer or torch.optim.Adam(self.parameters(), lr=args.lr)
 
+        # time
+        time_report['setup_time'] += time.time() - start_time
+
         # display dout
         print("Saving to: %s" % self.args.dout)
         best_loss = {'train': 1e10, 'valid_seen': 1e10, 'valid_unseen': 1e10}
         train_iter, valid_seen_iter, valid_unseen_iter = 0, 0, 0
         for epoch in trange(0, args.epoch, desc='epoch'):
+            # time
+            epoch_start_time = time.time()
             m_train = collections.defaultdict(list)
             self.train()
             self.adjust_lr(optimizer, args.lr, epoch, decay_epoch=args.decay_epoch)
             p_train = {}
             total_train_loss = list()
             random.shuffle(train) # shuffle every epoch
+            # time
+            start_time = time.time()
             for batch, feat in self.iterate(train, args.batch):
                 out = self.forward(feat)
                 preds = self.extract_preds(out, batch, feat)
@@ -109,29 +123,56 @@ class Module(nn.Module):
                 sum_loss = sum_loss.detach().cpu()
                 total_train_loss.append(float(sum_loss))
                 train_iter += self.args.batch
+            # time
+            time_report['forward_batch_train'] += time.time() - start_time
 
             # compute metrics for train
+            # time
+            start_time = time.time()
             m_train = {k: sum(v) / len(v) for k, v in m_train.items()}
             m_train.update(self.compute_metric(p_train, train))
             m_train['total_loss'] = sum(total_train_loss) / len(total_train_loss)
             self.summary_writer.add_scalar('train/total_loss', m_train['total_loss'], train_iter)
+            self.summary_writer.add_scalar('train/BLEU', m_train['lang_instr_bleu'], train_iter)
+            # time
+            time_report['compute_metrics_train'] += time.time() - start_time
 
             # compute metrics for valid_seen
+            # time
+            start_time = time.time()
             p_valid_seen, valid_seen_iter, total_valid_seen_loss, m_valid_seen = self.run_pred(valid_seen, args=args, name='valid_seen', iter=valid_seen_iter)
+            # time
+            time_report['forward_batch_valid_seen'] += time.time() - start_time
+            # time
+            start_time = time.time()
             m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
             m_valid_seen['total_loss'] = float(total_valid_seen_loss)
             self.summary_writer.add_scalar('valid_seen/total_loss', m_valid_seen['total_loss'], valid_seen_iter)
+            self.summary_writer.add_scalar('valid_seen/BLEU', m_valid_seen['lang_instr_bleu'], valid_seen_iter)
+            # time
+            time_report['compute_metrics_valid_seen'] += time.time() - start_time
 
             # compute metrics for valid_unseen
+            # time
+            start_time = time.time()
             p_valid_unseen, valid_unseen_iter, total_valid_unseen_loss, m_valid_unseen = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=valid_unseen_iter)
+            # time
+            time_report['forward_batch_valid_unseen'] += time.time() - start_time 
+            # time
+            start_time = time.time()          
             m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
             m_valid_unseen['total_loss'] = float(total_valid_unseen_loss)
             self.summary_writer.add_scalar('valid_unseen/total_loss', m_valid_unseen['total_loss'], valid_unseen_iter)
+            self.summary_writer.add_scalar('valid_unseen/BLEU', m_valid_unseen['lang_instr_bleu'], valid_unseen_iter)
+            # time
+            time_report['compute_metrics_valid_unseen'] += time.time() - start_time
 
             stats = {'epoch': epoch, 'train': m_train, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
 
             # new best valid_seen loss
             if total_valid_seen_loss < best_loss['valid_seen']:
+                # time
+                start_time = time.time()
                 print('\nFound new best valid_seen!! Saving...')
                 fsave = os.path.join(args.dout, 'best_seen.pth')
                 torch.save({
@@ -144,14 +185,22 @@ class Module(nn.Module):
                 fbest = os.path.join(args.dout, 'best_seen.json')
                 with open(fbest, 'wt') as f:
                     json.dump(stats, f, indent=2)
+                # time
+                time_report['torch_save_valid_seen'] += time.time() - start_time
 
+                # time
+                start_time = time.time()
                 fpred = os.path.join(args.dout, 'valid_seen.debug_epoch_{}.preds.json'.format(epoch))
                 with open(fpred, 'wt') as f:
                     json.dump(self.make_debug(p_valid_seen, valid_seen), f, indent=2)
                 best_loss['valid_seen'] = total_valid_seen_loss
+                # time
+                time_report['make_debug_valid_seen'] += time.time() - start_time
 
             # new best valid_unseen loss
             if total_valid_unseen_loss < best_loss['valid_unseen']:
+                # time
+                start_time = time.time()
                 print('Found new best valid_unseen!! Saving...')
                 fsave = os.path.join(args.dout, 'best_unseen.pth')
                 torch.save({
@@ -164,14 +213,22 @@ class Module(nn.Module):
                 fbest = os.path.join(args.dout, 'best_unseen.json')
                 with open(fbest, 'wt') as f:
                     json.dump(stats, f, indent=2)
+                # time
+                time_report['torch_save_valid_unseen'] += time.time() - start_time
 
+                # time
+                start_time = time.time()
                 fpred = os.path.join(args.dout, 'valid_unseen.debug_epoch_{}.preds.json'.format(epoch))
                 with open(fpred, 'wt') as f:
                     json.dump(self.make_debug(p_valid_unseen, valid_unseen), f, indent=2)
 
                 best_loss['valid_unseen'] = total_valid_unseen_loss
+                # time
+                time_report['make_debug_valid_unseen'] += time.time() - start_time
 
             # save the latest checkpoint
+            # time
+            start_time = time.time()
             if args.save_every_epoch:
                 fsave = os.path.join(args.dout, 'net_epoch_%d.pth' % epoch)
             else:
@@ -183,11 +240,17 @@ class Module(nn.Module):
                 'args': self.args,
                 'vocab': self.vocab,
             }, fsave)
+            # time
+            time_report['torch_save_last'] += time.time() - start_time
 
             # debug action output josn
+            # time
+            start_time = time.time()
             fpred = os.path.join(args.dout, 'train.debug_epoch_{}.preds.json'.format(epoch))
             with open(fpred, 'wt') as f:
                 json.dump(self.make_debug(p_train, train), f, indent=2)
+            # time
+            time_report['make_debug_train'] += time.time() - start_time
 
             # write stats
             for split in stats.keys():
@@ -195,6 +258,13 @@ class Module(nn.Module):
                     for k, v in stats[split].items():
                         self.summary_writer.add_scalar(split + '/' + k, v, train_iter)
             pprint.pprint(stats)
+
+            # time
+            time_report['epoch_time'] += time.time() - epoch_start_time
+
+            # time
+            for k, v in sorted(time_report.items(), key=lambda x: x[1], reverse=True):
+                print('{:<30}{:<40}'.format(k, round(v, 3)))
 
     def run_pred(self, dev, args=None, name='dev', iter=0):
         '''
