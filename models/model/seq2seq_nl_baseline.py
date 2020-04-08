@@ -235,7 +235,12 @@ class Module(Base):
         losses = dict()
 
         # GT and predictions
-        p_lang_instr = out['out_lang_instr'].view(-1, len(self.vocab['word']))
+        if self.training:
+            p_lang_instr = out['out_lang_instr'].view(-1, len(self.vocab['word']))
+        else:
+            # Trim prediction to match sequence lengths first
+            gold_lang_instr_length = feat['lang_instr'].shape[1]
+            p_lang_instr = out['out_lang_instr'][:, :gold_lang_instr_length, :].reshape(-1, len(self.vocab['word']))
         l_lang_instr = feat['lang_instr'].view(-1)
 
         # language instruction loss
