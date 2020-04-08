@@ -130,10 +130,12 @@ class Module(nn.Module):
             # time
             start_time = time.time()
             m_train = {k: sum(v) / len(v) for k, v in m_train.items()}
-            m_train.update(self.compute_metric(p_train, train))
+            if epoch % args.monitor_train_every == 0:
+                m_train.update(self.compute_metric(p_train, train))
             m_train['total_loss'] = sum(total_train_loss) / len(total_train_loss)
             self.summary_writer.add_scalar('train/total_loss', m_train['total_loss'], train_iter)
-            self.summary_writer.add_scalar('train/BLEU', m_train['lang_instr_bleu'], train_iter)
+            if epoch % args.monitor_train_every == 0:
+                self.summary_writer.add_scalar('train/BLEU', m_train['lang_instr_bleu'], train_iter)
             # time
             time_report['compute_metrics_train'] += time.time() - start_time
 
@@ -221,7 +223,6 @@ class Module(nn.Module):
                 fpred = os.path.join(args.dout, 'valid_unseen.debug_epoch_{}.preds.json'.format(epoch))
                 with open(fpred, 'wt') as f:
                     json.dump(self.make_debug(p_valid_unseen, valid_unseen), f, indent=2)
-
                 best_loss['valid_unseen'] = total_valid_unseen_loss
                 # time
                 time_report['make_debug_valid_unseen'] += time.time() - start_time
@@ -246,9 +247,10 @@ class Module(nn.Module):
             # debug action output josn
             # time
             start_time = time.time()
-            fpred = os.path.join(args.dout, 'train.debug_epoch_{}.preds.json'.format(epoch))
-            with open(fpred, 'wt') as f:
-                json.dump(self.make_debug(p_train, train), f, indent=2)
+            if epoch % args.monitor_train_every == 0:
+                fpred = os.path.join(args.dout, 'train.debug_epoch_{}.preds.json'.format(epoch))
+                with open(fpred, 'wt') as f:
+                    json.dump(self.make_debug(p_train, train), f, indent=2)
             # time
             time_report['make_debug_train'] += time.time() - start_time
 
@@ -324,16 +326,8 @@ class Module(nn.Module):
             ex = self.load_task_json(task)
             i = self.get_task_and_ann_id(ex)
             debug[i] = {
-                # Label - continuous language
-                'lang_goal': ex['turk_annotations']['anns'][ex['ann']['repeat_idx']]['task_desc'],
-                'lang_instr': ex['turk_annotations']['anns'][ex['ann']['repeat_idx']]['high_descs'],
-                # # Label - tokenized language (sanity check)
-                # 'word_inp_goal': ex['ann']['goal'],
-                # 'word_inp_instr': ex['ann']['instr'],
-                # 'num_inp_goal': ex['num']['lang_goal'],
-                # 'num_inp_instr': ex['num']['lang_instr'],
-                # Input - Low-level actions
-                'action_low': [a['discrete_action']['action'] for a in ex['plan']['low_actions']],
+                # Task Location root
+                'root': ex['root'],
                 # Input - High-level actions
                 'action_high': [a['discrete_action']['action'] for a in ex['plan']['high_pddl']],
                 # Predicted - Language
