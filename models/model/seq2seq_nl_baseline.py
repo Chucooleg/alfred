@@ -158,8 +158,6 @@ class Module(Base):
         self.r_state = {
             'state_t': None,
             'e_t': None,
-            # 'cont_lang': None,
-            # 'enc_lang': None,
             'cont_act': None,
             'enc_act': None
         }
@@ -189,7 +187,7 @@ class Module(Base):
         self.r_state['e_t'] = self.dec.emb(out_word_low.max(1)[1])
 
         # output formatting
-        feat['out_word_low'] = out_action_low.unsqueeze(0)
+        feat['out_word_low'] = out_word_low.unsqueeze(0)
         return feat
 
     def extract_preds(self, out, batch, feat, clean_special_tokens=True):
@@ -258,15 +256,16 @@ class Module(Base):
 
         flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
 
+        all_pred_id_ann = list(preds.keys())
         for task in data:
-            # grab data for ann_0, ann_1 and ann_2
-            exs = self.load_tasks_json(task)
-            # task_id is the same for ann_0, ann_1 and ann_2 
-            i = self.get_task_and_ann_id(ex)
+            # find matching prediction
+            pred_id_ann = '{}_{}'.format(task['task'].split('/')[1], task['repeat_idx'])
+            # grab task data for ann_0, ann_1 and ann_2
+            exs = self.load_task_jsons(task)
             # a list of 3 lists of word tokens. (1 for each human annotation, so total 3)
-            ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]
-            m['lang_instr_bleu'].append(sentence_bleu(ref_lang_instrs, preds[i]['lang_instr'].split(' ')))
+            ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]            
+            # compute bleu score
+            m['lang_instr_bleu'].append(sentence_bleu(ref_lang_instrs, preds[pred_id_ann]['lang_instr'].split(' ')))
+            all_pred_id_ann.remove(pred_id_ann)
+        assert len(all_pred_id_ann) == 0
         return {k: sum(v)/len(v) for k, v in m.items()}
-
-# TODO
-# eval only code (only eval 1/3 of tasks)

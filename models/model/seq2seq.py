@@ -281,21 +281,18 @@ class Module(nn.Module):
             data = json.load(f)
         return data
 
-    def load_tasks_json(self, task):
+    def load_task_jsons(self, task):
         '''
-        load preprocessed jsons from disk. 
-        all jsons with matching task index are loaded in order to gather all 3 versions of language annotations.
+        load all preprocessed jsons with matching task index from disk. 
+        do this to gather all 3 versions of language annotations.
         '''
         dataset = []
-
         for i in range(3):
             json_path = os.path.join(self.args.data, task['task'], '%s' % self.args.pp_folder, 'ann_%d.json' % i)
             if os.path.exists(json_path):
                 with open(json_path) as f:
-                    data = json.load(f)
-                    dataset.append(data)
-
-        return dataset
+                    dataset.append(json.load(f))
+        return dataset        
 
     def get_task_root(self, ex):
         '''
