@@ -130,11 +130,11 @@ class Module(nn.Module):
             # time
             start_time = time.time()
             m_train = {k: sum(v) / len(v) for k, v in m_train.items()}
-            if epoch % args.monitor_train_every == 0:
+            if epoch > 0 and epoch % args.monitor_train_every == 0:
                 m_train.update(self.compute_metric(p_train, train))
             m_train['total_loss'] = sum(total_train_loss) / len(total_train_loss)
             self.summary_writer.add_scalar('train/total_loss', m_train['total_loss'], train_iter)
-            if epoch % args.monitor_train_every == 0:
+            if epoch > 0 and epoch % args.monitor_train_every == 0:
                 self.summary_writer.add_scalar('train/BLEU', m_train['lang_instr_bleu'], train_iter)
             # time
             time_report['compute_metrics_train'] += time.time() - start_time
@@ -247,7 +247,7 @@ class Module(nn.Module):
             # debug action output josn
             # time
             start_time = time.time()
-            if epoch % args.monitor_train_every == 0:
+            if epoch > 0 and epoch % args.monitor_train_every == 0:
                 fpred = os.path.join(args.dout, 'train.debug_epoch_{}.preds.json'.format(epoch))
                 with open(fpred, 'wt') as f:
                     json.dump(self.make_debug(p_train, train), f, indent=2)
