@@ -5,3 +5,4 @@ data/
 .vscode/
 *dummy.py
 exp/
+exp_all/
