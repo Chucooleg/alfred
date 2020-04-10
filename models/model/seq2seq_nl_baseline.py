@@ -270,7 +270,7 @@ class Module(Base):
             # a list of 3 lists of word tokens. (1 for each human annotation, so total 3)
             ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]            
             # compute bleu score
-            m['lang_instr_bleu'].append(sentence_bleu(ref_lang_instrs, preds[pred_id_ann]['lang_instr'].split(' ')))
+            m['BLEU'].append(sentence_bleu(ref_lang_instrs, preds[pred_id_ann]['lang_instr'].split(' ')))
             all_pred_id_ann.remove(pred_id_ann)
         assert len(all_pred_id_ann) == 0
         return {k: sum(v)/len(v) for k, v in m.items()}
