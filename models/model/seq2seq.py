@@ -41,7 +41,7 @@ class Module(nn.Module):
         # initialize summary writer for tensorboardX
         self.summary_writer = SummaryWriter(log_dir=args.dout)
 
-    def run_train(self, splits, args=None, optimizer=None):
+    def run_train(self, splits, args=None, optimizer=None, start_epoch=0):
         '''
         training loop
         '''
@@ -89,7 +89,7 @@ class Module(nn.Module):
         print("Saving to: %s" % self.args.dout)
         best_metric = {'train': -1e10, 'valid_seen': -1e10, 'valid_unseen': -1e10}
         train_iter, valid_seen_iter, valid_unseen_iter = 0, 0, 0
-        for epoch in trange(0, args.epoch, desc='epoch'):
+        for epoch in trange(start_epoch, args.epoch, desc='epoch'):
             # time
             epoch_start_time = time.time()
             m_train = collections.defaultdict(list)
@@ -180,6 +180,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
+                    'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_seen.json')
                 with open(fbest, 'wt') as f:
@@ -208,6 +209,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
+                    'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_unseen.json')
                 with open(fbest, 'wt') as f:
@@ -237,6 +239,7 @@ class Module(nn.Module):
                 'optim': optimizer.state_dict(),
                 'args': self.args,
                 'vocab': self.vocab,
+                'epoch': epoch,
             }, fsave)
             # time
             time_report['torch_save_last'] += time.time() - start_time
@@ -403,9 +406,10 @@ class Module(nn.Module):
         save = torch.load(fsave)
         model = cls(save['args'], save['vocab'])
         model.load_state_dict(save['model'])
+        next_epoch = int(save['epoch']) + 1
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
         optimizer.load_state_dict(save['optim'])
-        return model, optimizer
+        return model, optimizer, next_epoch
 
     @classmethod
     def has_interaction(cls, action):

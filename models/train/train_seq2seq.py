@@ -3,7 +3,6 @@ import sys
 sys.path.append(os.path.join(os.environ['ALFRED_ROOT']))
 sys.path.append(os.path.join(os.environ['ALFRED_ROOT'], 'models'))
 
-import os
 import torch
 import pprint
 import json
@@ -96,10 +95,15 @@ if __name__ == '__main__':
     M = import_module('model.{}'.format(args.model))
     if args.resume:
         print("Loading: " + args.resume)
-        model, optimizer = M.Module.load(args.resume)
+        model, optimizer, start_epoch = M.Module.load(args.resume)
+        print("Restarting at epoch {}/{}".format(start_epoch, args.epoch-1))
+        if start_epoch >= args.epoch:
+            print('Checkpoint already finished {}/{} epochs.'.format(start_epoch, args.epoch))
+            sys.exit(0)
     else:
         model = M.Module(args, vocab)
         optimizer = None
+        start_epoch = 0
 
     # to gpu
     if args.gpu:
@@ -108,4 +112,4 @@ if __name__ == '__main__':
             optimizer_to(optimizer, torch.device('cuda'))
 
     # start train loop
-    model.run_train(splits, optimizer=optimizer)
+    model.run_train(splits, optimizer=optimizer, start_epoch=start_epoch)
