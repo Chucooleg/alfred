@@ -38,8 +38,8 @@ class Module(nn.Module):
         # set random seed (Note: this is not the seed used to initialize THOR object locations)
         random.seed(a=args.seed)
 
-        # summary self.writer
-        self.summary_writer = None
+        # initialize summary writer for tensorboardX
+        self.summary_writer = SummaryWriter(log_dir=args.dout)
 
     def run_train(self, splits, args=None, optimizer=None):
         '''
@@ -74,9 +74,6 @@ class Module(nn.Module):
             valid_seen = valid_seen[:16]
             valid_unseen = valid_unseen[:16]
 
-        # initialize summary writer for tensorboardX
-        self.summary_writer = SummaryWriter(log_dir=args.dout)
-
         # dump config
         fconfig = os.path.join(args.dout, 'config.json')
         with open(fconfig, 'wt') as f:
@@ -90,7 +87,7 @@ class Module(nn.Module):
 
         # display dout
         print("Saving to: %s" % self.args.dout)
-        best_loss = {'train': 1e10, 'valid_seen': 1e10, 'valid_unseen': 1e10}
+        best_metric = {'train': -1e10, 'valid_seen': -1e10, 'valid_unseen': -1e10}
         train_iter, valid_seen_iter, valid_unseen_iter = 0, 0, 0
         for epoch in trange(0, args.epoch, desc='epoch'):
             # time
@@ -149,8 +146,8 @@ class Module(nn.Module):
             start_time = time.time()
             m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
             m_valid_seen['total_loss'] = float(total_valid_seen_loss)
+            # TODO messed up
             self.summary_writer.add_scalar('valid_seen/total_loss', m_valid_seen['total_loss'], valid_seen_iter)
-            self.summary_writer.add_scalar('valid_seen/BLEU', m_valid_seen['lang_instr_bleu'], valid_seen_iter)
             # time
             time_report['compute_metrics_valid_seen'] += time.time() - start_time
 
@@ -164,15 +161,15 @@ class Module(nn.Module):
             start_time = time.time()          
             m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
             m_valid_unseen['total_loss'] = float(total_valid_unseen_loss)
+            # TODO messed up
             self.summary_writer.add_scalar('valid_unseen/total_loss', m_valid_unseen['total_loss'], valid_unseen_iter)
-            self.summary_writer.add_scalar('valid_unseen/BLEU', m_valid_unseen['lang_instr_bleu'], valid_unseen_iter)
             # time
             time_report['compute_metrics_valid_unseen'] += time.time() - start_time
 
             stats = {'epoch': epoch, 'train': m_train, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
 
-            # new best valid_seen loss
-            if total_valid_seen_loss < best_loss['valid_seen']:
+            # new best valid_seen metric
+            if m_valid_seen['lang_instr_bleu'] > best_metric['valid_seen']:
                 # time
                 start_time = time.time()
                 print('\nFound new best valid_seen!! Saving...')
@@ -195,12 +192,12 @@ class Module(nn.Module):
                 fpred = os.path.join(args.dout, 'valid_seen.debug_epoch_{}.preds.json'.format(epoch))
                 with open(fpred, 'wt') as f:
                     json.dump(self.make_debug(p_valid_seen, valid_seen), f, indent=2)
-                best_loss['valid_seen'] = total_valid_seen_loss
+                best_metric['valid_seen'] = m_valid_seen['lang_instr_bleu']
                 # time
                 time_report['make_debug_valid_seen'] += time.time() - start_time
 
-            # new best valid_unseen loss
-            if total_valid_unseen_loss < best_loss['valid_unseen']:
+            # new best valid_unseen metric
+            if m_valid_unseen['lang_instr_bleu'] > best_metric['valid_unseen']:
                 # time
                 start_time = time.time()
                 print('Found new best valid_unseen!! Saving...')
@@ -223,7 +220,7 @@ class Module(nn.Module):
                 fpred = os.path.join(args.dout, 'valid_unseen.debug_epoch_{}.preds.json'.format(epoch))
                 with open(fpred, 'wt') as f:
                     json.dump(self.make_debug(p_valid_unseen, valid_unseen), f, indent=2)
-                best_loss['valid_unseen'] = total_valid_unseen_loss
+                best_metric['valid_unseen'] = m_valid_unseen['lang_instr_bleu']
                 # time
                 time_report['make_debug_valid_unseen'] += time.time() - start_time
 
