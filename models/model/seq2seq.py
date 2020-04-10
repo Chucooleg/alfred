@@ -132,7 +132,7 @@ class Module(nn.Module):
             m_train['total_loss'] = sum(total_train_loss) / len(total_train_loss)
             self.summary_writer.add_scalar('train/total_loss', m_train['total_loss'], train_iter)
             if epoch > 0 and epoch % args.monitor_train_every == 0:
-                self.summary_writer.add_scalar('train/BLEU', m_train['lang_instr_bleu'], train_iter)
+                self.summary_writer.add_scalar('train/BLEU', m_train['BLEU'], train_iter)
             # time
             time_report['compute_metrics_train'] += time.time() - start_time
 
@@ -169,7 +169,7 @@ class Module(nn.Module):
             stats = {'epoch': epoch, 'train': m_train, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
 
             # new best valid_seen metric
-            if m_valid_seen['lang_instr_bleu'] > best_metric['valid_seen']:
+            if m_valid_seen['BLEU'] > best_metric['valid_seen']:
                 # time
                 start_time = time.time()
                 print('\nFound new best valid_seen!! Saving...')
@@ -192,12 +192,12 @@ class Module(nn.Module):
                 fpred = os.path.join(args.dout, 'valid_seen.debug_epoch_{}.preds.json'.format(epoch))
                 with open(fpred, 'wt') as f:
                     json.dump(self.make_debug(p_valid_seen, valid_seen), f, indent=2)
-                best_metric['valid_seen'] = m_valid_seen['lang_instr_bleu']
+                best_metric['valid_seen'] = m_valid_seen['BLEU']
                 # time
                 time_report['make_debug_valid_seen'] += time.time() - start_time
 
             # new best valid_unseen metric
-            if m_valid_unseen['lang_instr_bleu'] > best_metric['valid_unseen']:
+            if m_valid_unseen['BLEU'] > best_metric['valid_unseen']:
                 # time
                 start_time = time.time()
                 print('Found new best valid_unseen!! Saving...')
@@ -220,7 +220,7 @@ class Module(nn.Module):
                 fpred = os.path.join(args.dout, 'valid_unseen.debug_epoch_{}.preds.json'.format(epoch))
                 with open(fpred, 'wt') as f:
                     json.dump(self.make_debug(p_valid_unseen, valid_unseen), f, indent=2)
-                best_metric['valid_unseen'] = m_valid_unseen['lang_instr_bleu']
+                best_metric['valid_unseen'] = m_valid_unseen['BLEU']
                 # time
                 time_report['make_debug_valid_unseen'] += time.time() - start_time
 
