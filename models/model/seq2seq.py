@@ -341,12 +341,16 @@ class Module(nn.Module):
         load preprocessed json from disk
         '''
         json_path = os.path.join(self.args.data, task['task'], '%s' % self.args.pp_folder, 'ann_%d.json' % task['repeat_idx'])
+        retry = 0
         while True:
             try:
+                if retry > 0:
+                    print ('retrying {}'.format(retry))
                 with open(json_path) as f:
                     data = json.load(f)
                     return data
             except:
+                retry += 1
                 time.sleep(5)
                 pass
 
@@ -359,8 +363,18 @@ class Module(nn.Module):
         for i in range(3):
             json_path = os.path.join(self.args.data, task['task'], '%s' % self.args.pp_folder, 'ann_%d.json' % i)
             if os.path.exists(json_path):
-                with open(json_path) as f:
-                    dataset.append(json.load(f))
+                retry = 0
+                while True:
+                    try:
+                        if retry > 0:
+                            print ('retrying {}'.format(retry))
+                        with open(json_path) as f:
+                            dataset.append(json.load(f))
+                        break
+                    except:
+                        retry += 1
+                        time.sleep(5)
+                        pass
         return dataset        
 
     def get_task_root(self, ex):
