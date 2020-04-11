@@ -185,17 +185,17 @@ class Module(nn.Module):
                 fbest = os.path.join(args.dout, 'best_seen.json')
                 with open(fbest, 'wt') as f:
                     json.dump(stats, f, indent=2)
+                best_metric['valid_seen'] = m_valid_seen['BLEU']
                 # time
                 time_report['torch_save_valid_seen'] += time.time() - start_time
 
-                # time
-                start_time = time.time()
-                fpred = os.path.join(args.dout, 'valid_seen.debug_epoch_{}.preds.json'.format(epoch))
-                with open(fpred, 'wt') as f:
-                    json.dump(self.make_debug(p_valid_seen, valid_seen), f, indent=2)
-                best_metric['valid_seen'] = m_valid_seen['BLEU']
-                # time
-                time_report['make_debug_valid_seen'] += time.time() - start_time
+            # time
+            start_time = time.time()
+            fpred = os.path.join(args.dout, 'valid_seen.debug_epoch_{}.preds.json'.format(epoch))
+            with open(fpred, 'wt') as f:
+                json.dump(self.make_debug(p_valid_seen, valid_seen), f, indent=2)
+            # time
+            time_report['make_debug_valid_seen'] += time.time() - start_time
 
             # new best valid_unseen metric
             if m_valid_unseen['BLEU'] > best_metric['valid_unseen']:
@@ -214,17 +214,17 @@ class Module(nn.Module):
                 fbest = os.path.join(args.dout, 'best_unseen.json')
                 with open(fbest, 'wt') as f:
                     json.dump(stats, f, indent=2)
+                best_metric['valid_unseen'] = m_valid_unseen['BLEU']
                 # time
                 time_report['torch_save_valid_unseen'] += time.time() - start_time
 
-                # time
-                start_time = time.time()
-                fpred = os.path.join(args.dout, 'valid_unseen.debug_epoch_{}.preds.json'.format(epoch))
-                with open(fpred, 'wt') as f:
-                    json.dump(self.make_debug(p_valid_unseen, valid_unseen), f, indent=2)
-                best_metric['valid_unseen'] = m_valid_unseen['BLEU']
-                # time
-                time_report['make_debug_valid_unseen'] += time.time() - start_time
+            # time
+            start_time = time.time()
+            fpred = os.path.join(args.dout, 'valid_unseen.debug_epoch_{}.preds.json'.format(epoch))
+            with open(fpred, 'wt') as f:
+                json.dump(self.make_debug(p_valid_unseen, valid_unseen), f, indent=2)
+            # time
+            time_report['make_debug_valid_unseen'] += time.time() - start_time
 
             # save the latest checkpoint
             # time
