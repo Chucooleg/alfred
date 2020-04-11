@@ -341,9 +341,14 @@ class Module(nn.Module):
         load preprocessed json from disk
         '''
         json_path = os.path.join(self.args.data, task['task'], '%s' % self.args.pp_folder, 'ann_%d.json' % task['repeat_idx'])
-        with open(json_path) as f:
-            data = json.load(f)
-        return data
+        while True:
+            try:
+                with open(json_path) as f:
+                    data = json.load(f)
+                    return data
+            except:
+                time.sleep(5)
+                pass
 
     def load_task_jsons(self, task):
         '''
