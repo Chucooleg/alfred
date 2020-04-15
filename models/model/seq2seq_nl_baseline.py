@@ -59,36 +59,36 @@ class Module(Base):
             #########
             # outputs
             #########
-            
+
             # serialize segments
             self.serialize_lang_action(ex)
             
-            # goal and instr language
-            lang_goal, lang_instr = ex['num']['lang_goal'], ex['num']['lang_instr']
-            
-            # zero inputs if specified
-            lang_goal = self.zero_input(lang_goal) if self.args.zero_goal else lang_goal
-            lang_instr = self.zero_input(lang_instr) if self.args.zero_instr else lang_instr
-            
-            # # append goal
-            # feat['lang_goal'].append(lang_goal)
-            feat['lang_instr'].append(lang_goal)
-            
-            # append instr
-            # feat['lang_instr'].append(lang_instr)
-            
-            # append goal + instr
-            # lang_goal_instr = lang_goal + lang_instr
-            # feat['lang_goal_instr'].append(lang_goal_instr)
+            if not self.test_mode: 
+                # goal and instr language
+                lang_goal, lang_instr = ex['num']['lang_goal'], ex['num']['lang_instr']
+                
+                # zero inputs if specified
+                lang_goal = self.zero_input(lang_goal) if self.args.zero_goal else lang_goal
+                lang_instr = self.zero_input(lang_instr) if self.args.zero_instr else lang_instr
+                
+                # # append goal
+                # feat['lang_goal'].append(lang_goal)
+                feat['lang_instr'].append(lang_goal)
+                
+                # append instr
+                # feat['lang_instr'].append(lang_instr)
+                
+                # append goal + instr
+                # lang_goal_instr = lang_goal + lang_instr
+                # feat['lang_goal_instr'].append(lang_goal_instr)
             
             #########
             # inputs
             #########
             
-            if not self.test_mode:
-                # low-level action
-                feat['action_low'].append([a['action'] for a in ex['num']['action_low']])
-        
+            # low-level action
+            feat['action_low'].append([a['action'] for a in ex['num']['action_low']])
+
         # tensorization and padding
         for k, v in feat.items():
             # input
@@ -121,9 +121,9 @@ class Module(Base):
         '''
         is_serialized = not isinstance(feat['num']['lang_instr'][0], list)
         if not is_serialized:
-            feat['num']['lang_instr'] = [word for desc in feat['num']['lang_instr'] for word in desc]
+            feat['num']['action_low'] = [a for a_group in feat['num']['action_low'] for a in a_group]
             if not self.test_mode:
-                feat['num']['action_low'] = [a for a_group in feat['num']['action_low'] for a in a_group]
+                feat['num']['lang_instr'] = [word for desc in feat['num']['lang_instr'] for word in desc]
 
     def forward(self, feat, max_decode=300):
         # encode entire sequence of low-level actions

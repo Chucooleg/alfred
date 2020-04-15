@@ -5,4 +5,6 @@ data/
 .vscode/
 *dummy.py
 exp/
-exp_all/
+exp_all
+.ptconfig
+.ptignore
