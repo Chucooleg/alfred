@@ -56,6 +56,7 @@ class Module(nn.Module):
 
         # splits
         train = splits['train']
+        train_sanity = splits['train_sanity']
         # ann_0, ann_1 and ann_2 have the same action sequence, only ann_0 is needed for validation
         valid_seen = [t for t in splits['valid_seen'] if t['repeat_idx'] == 0]
         valid_unseen = [t for t in splits['valid_unseen'] if t['repeat_idx'] == 0]
@@ -65,12 +66,14 @@ class Module(nn.Module):
             small_train_size = int(self.args.dataset_fraction * 0.7)
             small_valid_size = int((self.args.dataset_fraction * 0.3) / 2)
             train = train[:small_train_size]
+            train_sanity = train_sanity[:small_valid_size]
             valid_seen = valid_seen[:small_valid_size]
             valid_unseen = valid_unseen[:small_valid_size]
 
         # debugging: use to check if training loop works without waiting for full epoch
         if self.args.fast_epoch:
             train = train[:16]
+            train_sanity = train_sanity[:16]
             valid_seen = valid_seen[:16]
             valid_unseen = valid_unseen[:16]
 
@@ -87,8 +90,8 @@ class Module(nn.Module):
 
         # display dout
         print("Saving to: %s" % self.args.dout)
-        best_metric = {'train': -1e10, 'valid_seen': -1e10, 'valid_unseen': -1e10}
-        train_iter, valid_seen_iter, valid_unseen_iter = 0, 0, 0
+        best_metric = {'train': -1e10, 'train_sanity': -1e10, 'valid_seen': -1e10, 'valid_unseen': -1e10}
+        train_iter, train_sanity_iter, valid_seen_iter, valid_unseen_iter = 0, 0, 0, 0
         for epoch in trange(start_epoch, args.epoch, desc='epoch'):
             # time
             epoch_start_time = time.time()
@@ -104,11 +107,13 @@ class Module(nn.Module):
                 out = self.forward(feat)
                 preds = self.extract_preds(out, batch, feat)
                 p_train.update(preds)
-                loss = self.compute_loss(out, batch, feat)
+                loss, perplexity = self.compute_loss(out, batch, feat)
                 for k, v in loss.items():
-                    ln = 'loss_' + k
+                    ln = 'batch_loss_' + k
                     m_train[ln].append(v.item())
                     self.summary_writer.add_scalar('train/' + ln, v.item(), train_iter)
+                m_train['perplexity'].append(perplexity.item())
+                self.summary_writer.add_scalar('train/batch_perplexity', perplexity.item(), train_iter)
 
                 # optimizer backward pass
                 optimizer.zero_grad()
@@ -116,7 +121,7 @@ class Module(nn.Module):
                 sum_loss.backward()
                 optimizer.step()
 
-                self.summary_writer.add_scalar('train/loss', sum_loss, train_iter)
+                self.summary_writer.add_scalar('train/batch_loss', sum_loss, train_iter)
                 sum_loss = sum_loss.detach().cpu()
                 total_train_loss.append(float(sum_loss))
                 train_iter += self.args.batch
@@ -127,14 +132,30 @@ class Module(nn.Module):
             # time
             start_time = time.time()
             m_train = {k: sum(v) / len(v) for k, v in m_train.items()}
+            self.summary_writer.add_scalar('train/epoch_perplexity', m_train['perplexity'], train_iter)
+            m_train['total_loss'] = sum(total_train_loss) / len(total_train_loss)
+            self.summary_writer.add_scalar('train/epoch_total_loss', m_train['total_loss'], train_iter)
             if epoch > 0 and epoch % args.monitor_train_every == 0:
                 m_train.update(self.compute_metric(p_train, train))
-            m_train['total_loss'] = sum(total_train_loss) / len(total_train_loss)
-            self.summary_writer.add_scalar('train/total_loss', m_train['total_loss'], train_iter)
-            if epoch > 0 and epoch % args.monitor_train_every == 0:
-                self.summary_writer.add_scalar('train/BLEU', m_train['BLEU'], train_iter)
+                self.summary_writer.add_scalar('train/epoch_BLEU', m_train['BLEU'], train_iter)
             # time
             time_report['compute_metrics_train'] += time.time() - start_time
+
+            # compute metrics for train_sanity
+            # time
+            start_time = time.time()
+            p_train_sanity, train_sanity_iter, total_train_sanity_loss, m_train_sanity = self.run_pred(train_sanity, args=args, name='train_sanity', iter=train_sanity_iter)
+            # time
+            time_report['forward_batch_train_sanity'] += time.time() - start_time
+            # time
+            start_time = time.time()
+            self.summary_writer.add_scalar('train_sanity/epoch_perplexity', m_train_sanity['perplexity'], train_sanity_iter)
+            m_train_sanity.update(self.compute_metric(p_train_sanity, train_sanity))
+            self.summary_writer.add_scalar('train_sanity/epoch_BLEU', m_train_sanity['BLEU'], train_sanity_iter)
+            m_train_sanity['total_loss'] = float(total_train_sanity_loss)
+            self.summary_writer.add_scalar('train_sanity/epoch_total_loss', m_train_sanity['total_loss'], train_sanity_iter)
+            # time
+            time_report['compute_metrics_train_sanity'] += time.time() - start_time
 
             # compute metrics for valid_seen
             # time
@@ -144,10 +165,11 @@ class Module(nn.Module):
             time_report['forward_batch_valid_seen'] += time.time() - start_time
             # time
             start_time = time.time()
+            self.summary_writer.add_scalar('valid_seen/epoch_perplexity', m_valid_seen['perplexity'], valid_seen_iter)
             m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
+            self.summary_writer.add_scalar('valid_seen/epoch_BLEU', m_valid_seen['BLEU'], valid_seen_iter)
             m_valid_seen['total_loss'] = float(total_valid_seen_loss)
-            # TODO messed up
-            self.summary_writer.add_scalar('valid_seen/total_loss', m_valid_seen['total_loss'], valid_seen_iter)
+            self.summary_writer.add_scalar('valid_seen/epoch_total_loss', m_valid_seen['total_loss'], valid_seen_iter)
             # time
             time_report['compute_metrics_valid_seen'] += time.time() - start_time
 
@@ -158,15 +180,16 @@ class Module(nn.Module):
             # time
             time_report['forward_batch_valid_unseen'] += time.time() - start_time 
             # time
-            start_time = time.time()          
+            start_time = time.time()
+            self.summary_writer.add_scalar('valid_unseen/epoch_perplexity', m_valid_unseen['perplexity'], valid_unseen_iter)         
             m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
+            self.summary_writer.add_scalar('valid_unseen/epoch_BLEU', m_valid_unseen['BLEU'], valid_unseen_iter)
             m_valid_unseen['total_loss'] = float(total_valid_unseen_loss)
-            # TODO messed up
-            self.summary_writer.add_scalar('valid_unseen/total_loss', m_valid_unseen['total_loss'], valid_unseen_iter)
+            self.summary_writer.add_scalar('valid_unseen/epoch_total_loss', m_valid_unseen['total_loss'], valid_unseen_iter)
             # time
             time_report['compute_metrics_valid_unseen'] += time.time() - start_time
 
-            stats = {'epoch': epoch, 'train': m_train, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
+            stats = {'epoch': epoch, 'train': m_train, 'train_sanity': m_train_sanity, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
 
             # new best valid_seen metric
             if m_valid_seen['BLEU'] > best_metric['valid_seen']:
@@ -226,6 +249,36 @@ class Module(nn.Module):
             # time
             time_report['make_debug_valid_unseen'] += time.time() - start_time
 
+            # new best train_sanity metric
+            if m_train_sanity['BLEU'] > best_metric['train_sanity']:
+                # time
+                start_time = time.time()
+                print('Found new best train_sanity!! Saving...')
+                fsave = os.path.join(args.dout, 'best_train_sanity.pth')
+                torch.save({
+                    'metric': stats,
+                    'model': self.state_dict(),
+                    'optim': optimizer.state_dict(),
+                    'args': self.args,
+                    'vocab': self.vocab,
+                    'epoch': epoch,
+                }, fsave)
+                fbest = os.path.join(args.dout, 'best_train_sanity.json')
+                with open(fbest, 'wt') as f:
+                    json.dump(stats, f, indent=2)
+                best_metric['train_sanity'] = m_train_sanity['BLEU']
+                # time
+                time_report['torch_save_train_sanity'] += time.time() - start_time
+
+            # debug action output josn
+            # time
+            start_time = time.time()
+            fpred = os.path.join(args.dout, 'train_sanity.debug_epoch_{}.preds.json'.format(epoch))
+            with open(fpred, 'wt') as f:
+                json.dump(self.make_debug(p_train_sanity, train_sanity), f, indent=2)
+            # time
+            time_report['make_debug_train'] += time.time() - start_time
+
             # save the latest checkpoint
             # time
             start_time = time.time()
@@ -244,21 +297,11 @@ class Module(nn.Module):
             # time
             time_report['torch_save_last'] += time.time() - start_time
 
-            # debug action output josn
-            # time
-            start_time = time.time()
-            if epoch > 0 and epoch % args.monitor_train_every == 0:
-                fpred = os.path.join(args.dout, 'train.debug_epoch_{}.preds.json'.format(epoch))
-                with open(fpred, 'wt') as f:
-                    json.dump(self.make_debug(p_train, train), f, indent=2)
-            # time
-            time_report['make_debug_train'] += time.time() - start_time
-
             # write stats
-            for split in stats.keys():
-                if isinstance(stats[split], dict):
-                    for k, v in stats[split].items():
-                        self.summary_writer.add_scalar(split + '/' + k, v, train_iter)
+            # for split in stats.keys():
+            #     if isinstance(stats[split], dict):
+            #         for k, v in stats[split].items():
+            #             self.summary_writer.add_scalar(split + '/' + k, v, train_iter)
             pprint.pprint(stats)
 
             # time
@@ -282,19 +325,94 @@ class Module(nn.Module):
             out = self.forward(feat)
             preds = self.extract_preds(out, batch, feat)
             p_dev.update(preds)
-            loss = self.compute_loss(out, batch, feat)
+            loss, perplexity = self.compute_loss(out, batch, feat)
             for k, v in loss.items():
-                ln = 'loss_' + k
+                ln = 'batch_loss_' + k
                 m_dev[ln].append(v.item())
                 self.summary_writer.add_scalar("%s/%s" % (name, ln), v.item(), dev_iter)
             sum_loss = sum(loss.values())
-            self.summary_writer.add_scalar("%s/loss" % (name), sum_loss, dev_iter)
+            self.summary_writer.add_scalar("%s/batch_loss" % (name), sum_loss, dev_iter)
             total_loss.append(float(sum_loss.detach().cpu()))
+            m_dev['perplexity'].append(perplexity.item())
+            self.summary_writer.add_scalar("%s/batch_perplexity" % (name), perplexity.item(), dev_iter)
             dev_iter += len(batch)
 
         m_dev = {k: sum(v) / len(v) for k, v in m_dev.items()}
         total_loss = sum(total_loss) / len(total_loss)
         return p_dev, dev_iter, total_loss, m_dev
+
+    def run_eval(self, splits, args=None, epoch=0):
+        '''
+        eval loop
+        '''
+        args = args or self.args
+
+        # splits
+        train_sanity = splits['train_sanity']
+        # ann_0, ann_1 and ann_2 have the same action sequence, only ann_0 is needed for validation
+        valid_seen = [t for t in splits['valid_seen'] if t['repeat_idx'] == 0]
+        valid_unseen = [t for t in splits['valid_unseen'] if t['repeat_idx'] == 0]       
+
+        # debugging: chose a small fraction of the dataset
+        if self.args.dataset_fraction > 0:
+            small_valid_size = int((self.args.dataset_fraction * 0.3) / 2)
+            train_sanity = train_sanity[:small_valid_size]
+            valid_seen = valid_seen[:small_valid_size]
+            valid_unseen = valid_unseen[:small_valid_size]
+
+        # debugging: use to check if training loop works without waiting for full epoch
+        if self.args.fast_epoch:
+            train_sanity = train_sanity[:16]
+            valid_seen = valid_seen[:16]
+            valid_unseen = valid_unseen[:16]        
+
+        # display dout
+        print("Saving to: %s" % self.args.dout)
+
+        # compute metrics for train_sanity
+        p_train_sanity, train_sanity_iter, total_train_sanity_loss, m_train_sanity = self.run_pred(train_sanity, args=args, name='train_sanity', iter=0)
+        m_train_sanity.update(self.compute_metric(p_train_sanity, train_sanity))
+        m_train_sanity['total_loss'] = float(total_train_sanity_loss)
+        self.summary_writer.add_scalar('train_sanity/epoch_perplexity', m_train_sanity['perplexity'], epoch)
+        self.summary_writer.add_scalar('train_sanity/epoch_BLEU', m_train_sanity['BLEU'], epoch)
+        self.summary_writer.add_scalar('train_sanity/epoch_total_loss', m_train_sanity['total_loss'], epoch)
+             
+        # compute metrics for valid_seen
+        p_valid_seen, valid_seen_iter, total_valid_seen_loss, m_valid_seen = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0)
+        m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
+        m_valid_seen['total_loss'] = float(total_valid_seen_loss)
+        self.summary_writer.add_scalar('valid_seen/epoch_perplexity', m_valid_seen['perplexity'], epoch)
+        self.summary_writer.add_scalar('valid_seen/epoch_BLEU', m_valid_seen['BLEU'], epoch)
+        self.summary_writer.add_scalar('valid_seen/epoch_total_loss', m_valid_seen['total_loss'], epoch)
+
+        # compute metrics for valid_unseen
+        p_valid_unseen, valid_unseen_iter, total_valid_unseen_loss, m_valid_unseen = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0)
+        m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
+        m_valid_unseen['total_loss'] = float(total_valid_unseen_loss)
+        self.summary_writer.add_scalar('valid_unseen/epoch_perplexity', m_valid_unseen['perplexity'], epoch)
+        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU', m_valid_unseen['BLEU'], epoch)
+        self.summary_writer.add_scalar('valid_unseen/epoch_total_loss', m_valid_unseen['total_loss'], epoch)
+
+        stats = {'epoch': epoch, 'train_sanity': m_train_sanity, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
+
+        # make debugging output for train_sanity
+        fpred = os.path.join(args.dout, 'train_sanity.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
+        with open(fpred, 'wt') as f:
+            json.dump(self.make_debug(p_train_sanity, train_sanity), f, indent=2)
+
+        # make debugging output for valid_seen
+        fpred = os.path.join(args.dout, 'valid_seen.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
+        with open(fpred, 'wt') as f:
+            json.dump(self.make_debug(p_valid_seen, valid_seen), f, indent=2)
+
+        # make debugging output for valid_unseen
+        fpred = os.path.join(args.dout, 'valid_unseen.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
+        with open(fpred, 'wt') as f:
+            json.dump(self.make_debug(p_valid_unseen, valid_unseen), f, indent=2)
+
+        pprint.pprint(stats)
+
+        return m_train_sanity, m_valid_seen, m_valid_unseen
 
     def featurize(self, batch):
         raise NotImplementedError()

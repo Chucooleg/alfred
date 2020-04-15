@@ -72,9 +72,10 @@ class Module(Base):
             
             # # append goal
             # feat['lang_goal'].append(lang_goal)
+            feat['lang_instr'].append(lang_goal)
             
             # append instr
-            feat['lang_instr'].append(lang_instr)
+            # feat['lang_instr'].append(lang_instr)
             
             # append goal + instr
             # lang_goal_instr = lang_goal + lang_instr
@@ -249,8 +250,9 @@ class Module(Base):
         lang_instr_loss *= pad_valid.float()
         lang_instr_loss = lang_instr_loss.mean()
         losses['lang_instr'] = lang_instr_loss
+        perplexity = 2**lang_instr_loss
 
-        return losses  
+        return losses, perplexity
 
     def compute_metric(self, preds, data):
         '''

@@ -9,8 +9,8 @@ import json
 from data.preprocess import Dataset
 from importlib import import_module
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from tensorboardX import SummaryWriter
 from models.utils.helper_utils import optimizer_to
-
 
 if __name__ == '__main__':
     # parser
@@ -68,10 +68,6 @@ if __name__ == '__main__':
     args.dout = args.dout.format(**vars(args))
     torch.manual_seed(args.seed)
 
-    # check if dataset has been preprocessed
-    if not os.path.exists(os.path.join(args.data, "%s.vocab" % args.pp_folder)) and not args.preprocess:
-        raise Exception("Dataset not processed; run with --preprocess")
-
     # make output dir
     pprint.pprint(args)
     if not os.path.isdir(args.dout):
@@ -82,34 +78,18 @@ if __name__ == '__main__':
         splits = json.load(f)
         pprint.pprint({k: len(v) for k, v in splits.items()})
 
-    # preprocess and save
-    if args.preprocess:
-        print("\nPreprocessing dataset and saving to %s folders ... This will take a while. Do this once as required." % args.pp_folder)
-        dataset = Dataset(args, None)
-        dataset.preprocess_splits(splits)
-        vocab = torch.load(os.path.join(args.dout, "%s.vocab" % args.pp_folder))
-    else:
-        vocab = torch.load(os.path.join(args.data, "%s.vocab" % args.pp_folder))
+    vocab = torch.load(os.path.join(args.data, "%s.vocab" % args.pp_folder))
 
     # load model
     M = import_module('model.{}'.format(args.model))
-    if args.resume:
-        print("Loading: " + args.resume)
-        model, optimizer, start_epoch = M.Module.load(args.resume)
-        print("Restarting at epoch {}/{}".format(start_epoch, args.epoch-1))
-        if start_epoch >= args.epoch:
-            print('Checkpoint already finished {}/{} epochs.'.format(start_epoch, args.epoch))
-            sys.exit(0)
-    else:
-        model = M.Module(args, vocab)
-        optimizer = None
-        start_epoch = 0
-
-    # to gpu
-    if args.gpu:
-        model = model.to(torch.device('cuda'))
-        if not optimizer is None:
-            optimizer_to(optimizer, torch.device('cuda'))
-
-    # start train loop
-    model.run_train(splits, optimizer=optimizer, start_epoch=start_epoch)
+    
+    for epoch in range(50):
+        resume_path = 'exp_all/model:seq2seq_nl_baseline,name:full_4_epoch_50/net_epoch_{}.pth'.format(epoch)
+        print('resume path: {}'.format(resume_path))
+        model, _, _ = M.Module.load(resume_path)
+        # to gpu
+        if args.gpu:
+            model = model.to(torch.device('cuda'))
+        
+        # run evaluation
+        m_train_sanity, m_valid_seen, m_valid_unseen = model.run_eval(splits, args=None, epoch=epoch)
