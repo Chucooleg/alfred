@@ -387,6 +387,7 @@ class LanguageDecoder(nn.Module):
             e_t = self.emb(w_t)
 
         results = {
+            # shape (B, T , Vocab size)
             'out_lang_instr': torch.stack(words, dim=1),
             'out_attn_scores': torch.stack(attn_scores, dim=1),
             'state_t': state_t

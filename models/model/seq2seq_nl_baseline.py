@@ -237,6 +237,7 @@ class Module(Base):
 
         # GT and predictions
         if self.training:
+            # (B*T, Vocab Size), raw unormalized scores
             p_lang_instr = out['out_lang_instr'].view(-1, len(self.vocab['word']))
         else:
             # Trim prediction to match sequence lengths first
