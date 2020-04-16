@@ -15,7 +15,7 @@ DATA=$4        # json_feat_2.1.0
 SPLITS=$5      # apr13.json
 EXTRAS=${@:6}  #other flags
 
-export DOUT=$PT_OUTPUT_DIR/exp/model:$MODEL,name:full_5_epoch_${EPOCH}_${SUFFIX}
+export DOUT=$PT_OUTPUT_DIR/exp/model:$MODEL,name:v1_epoch_${EPOCH}_${SUFFIX}
 mkdir $DOUT
 echo 'Script is making directory '${DOUT}
 

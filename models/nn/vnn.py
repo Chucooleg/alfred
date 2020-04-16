@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 
 
 class SelfAttn(nn.Module):
@@ -67,6 +68,88 @@ class ResnetVisualEncoder(nn.Module):
         x = self.fc(x)
 
         return x
+
+class ActionFrameAttnEncoder(nn.Module):
+    '''
+    action and frame sequence encoder
+    '''
+
+    def __init__(self, emb, dframe, dhid,
+                 act_dropout=0., vis_dropout=0., bidirectional=True):
+        super(ActionFrameAttnEncoder, self).__init__()
+
+        # Embedding matrix for Actions
+        self.emb = emb
+        self.dhid = dhid
+        self.dframe = dframe
+        self.demb = emb.weight.size(1)
+
+        # Dropouts
+        self.vis_dropout = nn.Dropout(vis_dropout)
+        self.act_dropout = nn.Dropout(act_dropout, inplace=True)
+
+        # Image Frame encoder
+        self.vis_encoder = ResnetVisualEncoder(dframe=dframe)
+
+        # Image + Action encoder
+        self.encoder = nn.LSTM(self.demb+self.dframe, self.dhid, 
+                               bidirectional=bidirectional, 
+                               batch_first=True)
+
+        # Self Attn 
+        self.enc_att = SelfAttn(dhid*2)
+
+    def vis_enc_step(self, frames):
+        '''
+        encode image frames for all time steps
+        '''        
+        B = frames.shape[0]
+        T = frames.shape[1]
+        # (B*T, 512, 7, 7)
+        frames = frames.reshape(B*T, frames.shape[2], frames.shape[3], frames.shape[4])
+        vis_feat = self.vis_encoder(frames)
+        vis_feat = vis_feat.reshape(B, T, self.dframe)
+
+        return vis_feat
+
+    def forward(self, feat):
+        '''
+        encode low-level actions and image frames
+        '''
+        # Action Sequence
+        # (B, T) with T = max(L), already padded
+        pad_seq = feat['action_low']
+        # (B,). Each value is L for the example
+        seq_lengths = feat['action_low_seq_lengths']
+        # (B, T, args.demb)
+        emb_act = self.emb(pad_seq)
+
+        # Image Frames
+        # (B, T, 512, 7, 7) with T = max(L), already padded
+        frames = self.vis_dropout(feat['frames'])
+        # (B, T, args.dframe)
+        vis_feat = self.vis_enc_step(frames)
+
+        assert emb_act.shape[1] == vis_feat.shape[1]
+
+        # Pack inputs together
+        # (B, T, args.demb+args.dframe)
+        inp_seq = torch.cat([emb_act, vis_feat], dim=2)
+        packed_input = pack_padded_sequence(inp_seq, seq_lengths, batch_first=True, enforce_sorted=False)
+
+        # Encode entire sequence
+        # packed sequence object
+        enc_act, _ = self.encoder(packed_input)
+        # (B, T, args.dhid*2)
+        enc_act, _ = pad_packed_sequence(enc_act, batch_first=True)
+        self.act_dropout(enc_act)
+
+        # Apply learned self-attention
+        # (B, args.dhid*2)
+        cont_act = self.enc_att(enc_act)
+
+        # return both compact and per-step representations
+        return cont_act, enc_act
 
 
 class MaskDecoder(nn.Module):
