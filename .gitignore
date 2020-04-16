@@ -8,3 +8,5 @@ exp/
 exp_all
 .ptconfig
 .ptignore
+pt_yaml_archive/
+phillytools/
