@@ -508,7 +508,7 @@ class Module(nn.Module):
         '''
         returns the folder path of a trajectory
         '''
-        return os.path.join(self.args.data_disk, ex['split'], *(ex['root'].split('/')[-2:]))
+        return os.path.join(self.args.data, ex['split'], *(ex['root'].split('/')[-2:]))
 
     def iterate(self, data, batch_size):
         '''

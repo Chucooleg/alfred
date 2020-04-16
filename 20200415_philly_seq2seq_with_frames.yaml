@@ -1,4 +1,4 @@
-description: Phiily seq2seq with frames
+description: Phiily seq2seq with frames no grad
 # experiment named vnla_time_comparisons
 
 target:
@@ -31,12 +31,12 @@ code:
 # list of jobs to run, we run 2 jobs in this example
 jobs:
   # name must be unique across the jobs
-- name: debug_philly_alfred_beagle_with_frames
+- name: debug_philly_alfred_beagle_with_frames_no_grad
   sku: G1
   command:
-  - bash train_experiment.sh "seq2seq_nl_with_frames" 50 "debug_philly_alfred_beagle_with_frames" "json_feat_2.1.0" "apr13.json" --save_every_epoch --fast_epoch
+  - bash train_experiment.sh "seq2seq_nl_with_frames" 50 "debug_philly_alfred_beagle_with_frames_no_grad" "json_feat_2.1.0" "apr13.json" --save_every_epoch --fast_epoch
 
-- name: seq2seq_with_frames
+- name: seq2seq_with_frames_no_grad
   sku: G1
   command:
-  - bash train_experiment.sh "seq2seq_nl_with_frames" 50 "seq2seq_with_frames" "json_feat_2.1.0" "apr13.json" --save_every_epoch
+  - bash train_experiment.sh "seq2seq_nl_with_frames" 50 "seq2seq_with_frames_no_grad" "json_feat_2.1.0" "apr13.json" --save_every_epoch

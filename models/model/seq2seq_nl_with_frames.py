@@ -113,8 +113,12 @@ class Module(Base):
             start_time = time.time()
             # load Resnet features from disk
             root = self.get_task_root(ex)
+            # time
+            torch_load_start_time = time.time()
             # shape (num gold frames for task, 512, 7, 7)
             im = torch.load(os.path.join(root, self.feat_pt))
+            # time
+            time_report['featurize_torch_load_time'] += time.time() - torch_load_start_time
             keep = [None] * len(ex['plan']['low_actions'])
             for i, d in enumerate(ex['images']):
                 # only add frames linked with low-level actions (i.e. skip filler frames like smooth rotations and dish washing)
