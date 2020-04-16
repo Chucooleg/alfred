@@ -72,10 +72,10 @@ class Module(nn.Module):
 
         # debugging: use to check if training loop works without waiting for full epoch
         if self.args.fast_epoch:
-            train = train[:16]
-            train_sanity = train_sanity[:16]
-            valid_seen = valid_seen[:16]
-            valid_unseen = valid_unseen[:16]
+            train = train[:80]
+            train_sanity = train_sanity[:80]
+            valid_seen = valid_seen[:80]
+            valid_unseen = valid_unseen[:80]
 
         # dump config
         fconfig = os.path.join(args.dout, 'config.json')
@@ -102,8 +102,9 @@ class Module(nn.Module):
             total_train_loss = list()
             random.shuffle(train) # shuffle every epoch
             # time
-            start_time = time.time()
-            for batch, feat in self.iterate(train, args.batch):
+            epoch_loop_start_time = time.time()
+            for batch, feat, iterate_time_report in self.iterate(train, args.batch):
+                start_time = time.time()
                 out = self.forward(feat)
                 preds = self.extract_preds(out, batch, feat)
                 p_train.update(preds)
@@ -125,8 +126,15 @@ class Module(nn.Module):
                 sum_loss = sum_loss.detach().cpu()
                 total_train_loss.append(float(sum_loss))
                 train_iter += self.args.batch
+                # time
+                time_report['forward_batch_train'] += time.time() - start_time
+
+                # time
+                for k, v in iterate_time_report.items():
+                    time_report[k] += v
+
             # time
-            time_report['forward_batch_train'] += time.time() - start_time
+            time_report['forward_batch_train_with_iterate'] += time.time() - epoch_loop_start_time
 
             # compute metrics for train
             # time
@@ -311,6 +319,7 @@ class Module(nn.Module):
             for k, v in sorted(time_report.items(), key=lambda x: x[1], reverse=True):
                 print('{:<30}{:<40}'.format(k, round(v, 3)))
 
+    @torch.no_grad()
     def run_pred(self, dev, args=None, name='dev', iter=0):
         '''
         validation loop
@@ -321,7 +330,7 @@ class Module(nn.Module):
         self.eval()
         total_loss = list()
         dev_iter = iter
-        for batch, feat in self.iterate(dev, args.batch):
+        for batch, feat, iterate_time_report in self.iterate(dev, args.batch):
             out = self.forward(feat)
             preds = self.extract_preds(out, batch, feat)
             p_dev.update(preds)
@@ -499,17 +508,32 @@ class Module(nn.Module):
         '''
         returns the folder path of a trajectory
         '''
-        return os.path.join(self.args.data, ex['split'], *(ex['root'].split('/')[-2:]))
+        return os.path.join(self.args.data_disk, ex['split'], *(ex['root'].split('/')[-2:]))
 
     def iterate(self, data, batch_size):
         '''
         breaks dataset into batch_size chunks for training
         '''
+        # time
+        time_report = defaultdict(int)
+
         for i in trange(0, len(data), batch_size, desc='batch'):
             tasks = data[i:i+batch_size]
+            # time
+            start_time = time.time()
             batch = [self.load_task_json(task) for task in tasks]
-            feat = self.featurize(batch)
-            yield batch, feat
+            # time
+            time_report['iterate_load_task_json'] += time.time() - start_time
+            # time
+            start_time = time.time()            
+            feat, featurize_time_report = self.featurize(batch)
+            # time
+            time_report['iterate_featurize'] += time.time() - start_time
+
+            for k, v in featurize_time_report.items():
+                time_report[k] += v
+
+            yield batch, feat, time_report
 
     def zero_input(self, x, keep_end_token=True):
         '''

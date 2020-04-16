@@ -109,8 +109,19 @@ class ActionFrameAttnEncoder(nn.Module):
         frames = frames.reshape(B*T, frames.shape[2], frames.shape[3], frames.shape[4])
         vis_feat = self.vis_encoder(frames)
         vis_feat = vis_feat.reshape(B, T, self.dframe)
-
         return vis_feat
+
+    # def vis_enc_step(self, frames):
+    #     '''
+    #     encode image frames for all time steps
+    #     '''
+    #     # (B, T, args.dframe)
+    #     vis_feat = torch.empty(frames.shape[0], frames.shape[1], self.dframe, device=torch.device('cuda'))
+    #     t_seq = frames.shape[1]  # T
+    #     for t in range(t_seq):
+    #         # shape (B, args.dframe)
+    #         vis_feat[:, t, :] = self.vis_encoder(frames[:, t])
+    #     return vis_feat
 
     def forward(self, feat):
         '''
@@ -129,8 +140,6 @@ class ActionFrameAttnEncoder(nn.Module):
         frames = self.vis_dropout(feat['frames'])
         # (B, T, args.dframe)
         vis_feat = self.vis_enc_step(frames)
-
-        assert emb_act.shape[1] == vis_feat.shape[1]
 
         # Pack inputs together
         # (B, T, args.demb+args.dframe)

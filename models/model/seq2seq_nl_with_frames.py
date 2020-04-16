@@ -10,6 +10,10 @@ from model.seq2seq import Module as Base
 from models.utils.metric import compute_f1, compute_exact
 from nltk.translate.bleu_score import sentence_bleu
 
+# time
+import time
+from collections import defaultdict
+
 class Module(Base):
 
     def __init__(self, args, vocab):
@@ -56,6 +60,9 @@ class Module(Base):
     def featurize(self, batch):
         '''tensoroze and pad batch input'''
     
+        # time
+        time_report = defaultdict(int)
+
         device = torch.device('cuda') if self.args.gpu else torch.device('cpu')
         feat = collections.defaultdict(list)
     
@@ -64,6 +71,9 @@ class Module(Base):
             #########
             # outputs
             #########
+
+            # time
+            start_time = time.time()
 
             # serialize segments
             self.serialize_lang_action(ex)
@@ -85,14 +95,22 @@ class Module(Base):
                 # append goal + instr
                 # lang_goal_instr = lang_goal + lang_instr
                 # feat['lang_goal_instr'].append(lang_goal_instr)
-            
+
+            # time
+            time_report['featurize_outputs'] += time.time() - start_time
+
             #########
             # inputs
             #########
-            
+            # time
+            start_time = time.time()
             # low-level action
             feat['action_low'].append([a['action'] for a in ex['num']['action_low']])
+            # time
+            time_report['featurize_input_action_low'] += time.time() - start_time
 
+            # time
+            start_time = time.time()
             # load Resnet features from disk
             root = self.get_task_root(ex)
             # shape (num gold frames for task, 512, 7, 7)
@@ -105,7 +123,11 @@ class Module(Base):
             # keep has shape (num gold low-level actions L, 512, 7, 7)
             keep.append(keep[-1])  # stop frame
             feat['frames'].append(torch.stack(keep, dim=0))
+            # time
+            time_report['featurize_input_resnet_features'] += time.time() - start_time
 
+        # time
+        start_time = time.time()
         feat['action_low_seq_lengths'] = []
         # tensorization and padding
         for k, v in feat.items():
@@ -128,8 +150,10 @@ class Module(Base):
                 # (B, T, 512, 7, 7) for k='frames'
                 pad_seq = pad_sequence(seqs, batch_first=True, padding_value=self.pad)
                 feat[k] = pad_seq     
-    
-        return feat
+        # time
+        time_report['featurize_tensorization_and_padding'] += time.time() - start_time
+
+        return feat, time_report
     
     def serialize_lang_action(self, feat):
         '''
