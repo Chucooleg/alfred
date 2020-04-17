@@ -262,7 +262,8 @@ class Module(Base):
         # how does this work during training with teacher forcing !?
         m = collections.defaultdict(list)
 
-        flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
+        # flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
+        flatten_isntr = lambda instr: [word.strip() for word in instr]
 
         all_pred_id_ann = list(preds.keys())
         for task in data:
