@@ -1,0 +1,37 @@
+description: Phiily retrain v0 on philly
+# experiment named vnla_time_comparisons
+
+target:
+  # which virtual cluster you belong to (msrlabs, etc.). Everyone has access to "msrlabs".
+  vc: msrlabs
+  # physical cluster to use (cam, gcr, rr1, rr2) or Azure clusters (eu1, eu2, etc.)
+  cluster: wu2
+
+environment:
+  image: philly/jobs/test/pytorch:pytorch1.2.0-py36-ai2thor2.1.0
+  registry: phillyregistry.azurecr.io
+
+  setup:
+    - CUDA_VISIBLE_DEVICES=0
+
+storage:
+  output:
+    storage_account_name: msrairesidentssa4
+    container_name: alfred-data
+    mount_dir: /mnt/alfred-data
+
+code:
+  # local directory of the code. this will be uploaded to the server.
+  # $CONFIG_DIR is expanded to the directory of this config file
+  local_dir: $CONFIG_DIR/
+
+# data:
+#   data upload is not required for this example
+
+# list of jobs to run, we run 2 jobs in this example
+jobs:
+  # name must be unique across the jobs
+- name: low_level_instrs
+  sku: G1
+  command:
+  - bash train_experiment.sh "seq2seq_nl_baseline" 50 "low_level_instrs" "json_feat_2.1.0" "apr13.json" --save_every_epoch
