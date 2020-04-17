@@ -72,7 +72,7 @@ if __name__ == '__main__':
     pprint.pprint(args)
     if not os.path.isdir(args.dout):
         os.makedirs(args.dout)
-
+    
     # load train/valid/tests splits
     with open(args.splits) as f:
         splits = json.load(f)
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     M = import_module('model.{}'.format(args.model))
     
     for epoch in range(50):
-        resume_path = 'exp_all/model:seq2seq_nl_baseline,name:full_4_epoch_50/net_epoch_{}.pth'.format(epoch)
+        resume_path = 'exp_all/model:seq2seq_nl_baseline,name:full_5_epoch_50_high_level_instrs/net_epoch_{}.pth'.format(epoch)
         print('resume path: {}'.format(resume_path))
         model, _, _ = M.Module.load(resume_path)
         # to gpu
