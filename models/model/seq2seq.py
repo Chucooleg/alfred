@@ -149,11 +149,11 @@ class Module(nn.Module):
             time_report['forward_batch_train_sanity'] += time.time() - start_time
             # time
             start_time = time.time()
-            self.summary_writer.add_scalar('train_sanity/epoch_perplexity', m_train_sanity['perplexity'], train_sanity_iter)
+            self.summary_writer.add_scalar('train_sanity/epoch_perplexity_student_forcing', m_train_sanity['perplexity'], train_sanity_iter)
             m_train_sanity.update(self.compute_metric(p_train_sanity, train_sanity))
-            self.summary_writer.add_scalar('train_sanity/epoch_BLEU', m_train_sanity['BLEU'], train_sanity_iter)
+            self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing', m_train_sanity['BLEU'], train_sanity_iter)
             m_train_sanity['total_loss'] = float(total_train_sanity_loss)
-            self.summary_writer.add_scalar('train_sanity/epoch_total_loss', m_train_sanity['total_loss'], train_sanity_iter)
+            self.summary_writer.add_scalar('train_sanity/epoch_total_loss_student_forcing', m_train_sanity['total_loss'], train_sanity_iter)
             # time
             time_report['compute_metrics_train_sanity'] += time.time() - start_time
 
@@ -165,11 +165,11 @@ class Module(nn.Module):
             time_report['forward_batch_valid_seen'] += time.time() - start_time
             # time
             start_time = time.time()
-            self.summary_writer.add_scalar('valid_seen/epoch_perplexity', m_valid_seen['perplexity'], valid_seen_iter)
+            self.summary_writer.add_scalar('valid_seen/epoch_perplexity_student_forcing', m_valid_seen['perplexity'], valid_seen_iter)
             m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
-            self.summary_writer.add_scalar('valid_seen/epoch_BLEU', m_valid_seen['BLEU'], valid_seen_iter)
+            self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing', m_valid_seen['BLEU'], valid_seen_iter)
             m_valid_seen['total_loss'] = float(total_valid_seen_loss)
-            self.summary_writer.add_scalar('valid_seen/epoch_total_loss', m_valid_seen['total_loss'], valid_seen_iter)
+            self.summary_writer.add_scalar('valid_seen/epoch_total_loss_student_forcing', m_valid_seen['total_loss'], valid_seen_iter)
             # time
             time_report['compute_metrics_valid_seen'] += time.time() - start_time
 
@@ -181,11 +181,11 @@ class Module(nn.Module):
             time_report['forward_batch_valid_unseen'] += time.time() - start_time 
             # time
             start_time = time.time()
-            self.summary_writer.add_scalar('valid_unseen/epoch_perplexity', m_valid_unseen['perplexity'], valid_unseen_iter)         
+            self.summary_writer.add_scalar('valid_unseen/epoch_perplexity_student_forcing', m_valid_unseen['perplexity'], valid_unseen_iter)         
             m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
-            self.summary_writer.add_scalar('valid_unseen/epoch_BLEU', m_valid_unseen['BLEU'], valid_unseen_iter)
+            self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing', m_valid_unseen['BLEU'], valid_unseen_iter)
             m_valid_unseen['total_loss'] = float(total_valid_unseen_loss)
-            self.summary_writer.add_scalar('valid_unseen/epoch_total_loss', m_valid_unseen['total_loss'], valid_unseen_iter)
+            self.summary_writer.add_scalar('valid_unseen/epoch_total_loss_student_forcing', m_valid_unseen['total_loss'], valid_unseen_iter)
             # time
             time_report['compute_metrics_valid_unseen'] += time.time() - start_time
 
