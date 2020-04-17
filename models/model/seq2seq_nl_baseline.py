@@ -125,12 +125,12 @@ class Module(Base):
             if not self.test_mode:
                 feat['num']['lang_instr'] = [word for desc in feat['num']['lang_instr'] for word in desc]
 
-    def forward(self, feat, max_decode=300):
+    def forward(self, feat, max_decode=300, validate_with_teacher_forcing=False):
         # encode entire sequence of low-level actions
         cont_act, enc_act = self.encode_act(feat)
         # run decoder until entire sentence is finished
         state_0 = cont_act, torch.zeros_like(cont_act)
-        res = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0)
+        res = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0, validate_with_teacher_forcing=validate_with_teacher_forcing)
         feat.update(res)
         return feat
     

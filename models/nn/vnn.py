@@ -454,14 +454,14 @@ class LanguageDecoder(nn.Module):
 
         return word_t, state_t, act_attn_t
 
-    def forward(self, enc, gold=None, max_decode=150, state_0=None):
+    def forward(self, enc, gold=None, max_decode=150, state_0=None, validate_with_teacher_forcing=False):
         '''
         enc : (B, T, args.dhid). LSTM encoder per action output
         gold: (B, T). padded_sequence of word index tokens.
         max_decode: integer. maximum timesteps - length of language instruction.
         state_0: tuple (cont_act, torch.zeros.like(cont_act)).
         '''
-        max_t = gold.size(1) if self.training else max_decode
+        max_t = gold.size(1) if (self.training or validate_with_teacher_forcing) else max_decode
         batch = enc.size(0)
         e_t = self.go.repeat(batch, 1)
         state_t = state_0
@@ -472,7 +472,7 @@ class LanguageDecoder(nn.Module):
             word_t, state_t, attn_score_t = self.step(enc, e_t, state_t)
             words.append(word_t)
             attn_scores.append(attn_score_t)
-            if self.teacher_forcing and self.training:
+            if self.teacher_forcing and (self.training or validate_with_teacher_forcing):
                 w_t = gold[:, t]
             else:
                 w_t = word_t.max(1)[1]
