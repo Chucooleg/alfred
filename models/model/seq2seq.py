@@ -128,68 +128,67 @@ class Module(nn.Module):
             # time
             time_report['forward_batch_train'] += time.time() - start_time
 
-            # compute metrics for train
+            # compute metrics for train, teacher-forcing
             # time
             start_time = time.time()
             m_train = {k: sum(v) / len(v) for k, v in m_train.items()}
             self.summary_writer.add_scalar('train/epoch_perplexity', m_train['perplexity'], train_iter)
             m_train['total_loss'] = sum(total_train_loss) / len(total_train_loss)
             self.summary_writer.add_scalar('train/epoch_total_loss', m_train['total_loss'], train_iter)
-            if epoch > 0 and epoch % args.monitor_train_every == 0:
-                m_train.update(self.compute_metric(p_train, train))
-                self.summary_writer.add_scalar('train/epoch_BLEU', m_train['BLEU'], train_iter)
             # time
             time_report['compute_metrics_train'] += time.time() - start_time
 
-            # compute metrics for train_sanity
             # time
             start_time = time.time()
-            p_train_sanity, train_sanity_iter, total_train_sanity_loss, m_train_sanity = self.run_pred(train_sanity, args=args, name='train_sanity', iter=train_sanity_iter)
-            # time
-            time_report['forward_batch_train_sanity'] += time.time() - start_time
-            # time
-            start_time = time.time()
-            self.summary_writer.add_scalar('train_sanity/epoch_perplexity_student_forcing', m_train_sanity['perplexity'], train_sanity_iter)
-            m_train_sanity.update(self.compute_metric(p_train_sanity, train_sanity))
-            self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing', m_train_sanity['BLEU'], train_sanity_iter)
-            m_train_sanity['total_loss'] = float(total_train_sanity_loss)
-            self.summary_writer.add_scalar('train_sanity/epoch_total_loss_student_forcing', m_train_sanity['total_loss'], train_sanity_iter)
-            # time
-            time_report['compute_metrics_train_sanity'] += time.time() - start_time
+            #-------------------------------------------------------
+            # compute metrics for train_sanity, teacher forcing
+            _, _, total_train_sanity_loss, m_train_sanity_teacher = self.run_pred(train_sanity, args=args, name='train_sanity', iter=train_sanity_iter, validate_teacher_forcing=True)
+            m_train_sanity_teacher['total_loss'] = float(total_train_sanity_loss)
+            self.summary_writer.add_scalar('train_sanity/epoch_perplexity_teacher_forcing', m_train_sanity_teacher['perplexity'], epoch)
+            self.summary_writer.add_scalar('train_sanity/epoch_total_loss_teacher_forcing', m_train_sanity_teacher['total_loss'], epoch)
 
-            # compute metrics for valid_seen
-            # time
-            start_time = time.time()
-            p_valid_seen, valid_seen_iter, total_valid_seen_loss, m_valid_seen = self.run_pred(valid_seen, args=args, name='valid_seen', iter=valid_seen_iter)
-            # time
-            time_report['forward_batch_valid_seen'] += time.time() - start_time
-            # time
-            start_time = time.time()
-            self.summary_writer.add_scalar('valid_seen/epoch_perplexity_student_forcing', m_valid_seen['perplexity'], valid_seen_iter)
-            m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
-            self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing', m_valid_seen['BLEU'], valid_seen_iter)
-            m_valid_seen['total_loss'] = float(total_valid_seen_loss)
-            self.summary_writer.add_scalar('valid_seen/epoch_total_loss_student_forcing', m_valid_seen['total_loss'], valid_seen_iter)
-            # time
-            time_report['compute_metrics_valid_seen'] += time.time() - start_time
+            # compute metrics for valid_seen, teacher forcing
+            _, _, total_valid_seen_loss, m_valid_seen_teacher = self.run_pred(valid_seen, args=args, name='valid_seen', iter=valid_seen_iter, validate_teacher_forcing=True)
+            m_valid_seen_teacher['total_loss'] = float(total_valid_seen_loss)
+            self.summary_writer.add_scalar('valid_seen/epoch_perplexity_teacher_forcing', m_valid_seen_teacher['perplexity'], epoch)
+            self.summary_writer.add_scalar('valid_seen/epoch_total_loss_teacher_forcing', m_valid_seen_teacher['total_loss'], epoch)
 
-            # compute metrics for valid_unseen
-            # time
-            start_time = time.time()
-            p_valid_unseen, valid_unseen_iter, total_valid_unseen_loss, m_valid_unseen = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=valid_unseen_iter)
-            # time
-            time_report['forward_batch_valid_unseen'] += time.time() - start_time 
-            # time
-            start_time = time.time()
-            self.summary_writer.add_scalar('valid_unseen/epoch_perplexity_student_forcing', m_valid_unseen['perplexity'], valid_unseen_iter)         
-            m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
-            self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing', m_valid_unseen['BLEU'], valid_unseen_iter)
-            m_valid_unseen['total_loss'] = float(total_valid_unseen_loss)
-            self.summary_writer.add_scalar('valid_unseen/epoch_total_loss_student_forcing', m_valid_unseen['total_loss'], valid_unseen_iter)
-            # time
-            time_report['compute_metrics_valid_unseen'] += time.time() - start_time
+            # compute metrics for valid_unseen, teacher forcing
+            _, _, total_valid_unseen_loss, m_valid_unseen_teacher = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=valid_unseen_iter, validate_teacher_forcing=True)
+            m_valid_unseen_teacher['total_loss'] = float(total_valid_unseen_loss)
+            self.summary_writer.add_scalar('valid_unseen/epoch_perplexity_teacher_forcing', m_valid_unseen_teacher['perplexity'], epoch)
+            self.summary_writer.add_scalar('valid_unseen/epoch_total_loss_teacher_forcing', m_valid_unseen_teacher['total_loss'], epoch)
 
-            stats = {'epoch': epoch, 'train': m_train, 'train_sanity': m_train_sanity, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
+            #-------------------------------------------------------
+            # compute metrics for train_sanity, student forcing, argmax
+            p_train_sanity, train_sanity_iter, _, m_train_sanity_student = self.run_pred(train_sanity, args=args, name='train_sanity', iter=train_sanity_iter)
+            m_train_sanity_student.update(self.compute_metric(p_train_sanity, train_sanity))
+            self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing', m_train_sanity_student['BLEU'], epoch)
+
+            # compute metrics for valid_seen, student forcing, argmax
+            p_valid_seen, valid_seen_iter, _, m_valid_seen_student = self.run_pred(valid_seen, args=args, name='valid_seen', iter=valid_seen_iter)
+            m_valid_seen_student.update(self.compute_metric(p_valid_seen, valid_seen))
+            self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing', m_valid_seen_student['BLEU'], epoch)
+
+            # compute metrics for valid_unseen, student forcing, argmax
+            p_valid_unseen, valid_unseen_iter, _, m_valid_unseen_student = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=valid_unseen_iter)
+            m_valid_unseen_student.update(self.compute_metric(p_valid_unseen, valid_unseen))
+            self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing', m_valid_unseen_student['BLEU'], epoch)
+
+            #-------------------------------------------------------
+            m_train_sanity, m_valid_seen, m_valid_unseen = {}, {}, {}
+
+            m_train_sanity['perplexity'], m_valid_seen['perplexity'], m_valid_unseen['perplexity'] = \
+                m_train_sanity_teacher['perplexity'], m_valid_seen_teacher['perplexity'], m_valid_unseen_teacher['perplexity']
+            m_train_sanity['total_loss'], m_valid_seen['total_loss'], m_valid_unseen['total_loss'] = \
+                m_train_sanity_teacher['total_loss'], m_valid_seen_teacher['total_loss'], m_valid_unseen_teacher['total_loss']
+            m_train_sanity['BLEU'], m_valid_seen['BLEU'], m_valid_unseen['BLEU'] = \
+                m_train_sanity_student['BLEU'], m_valid_seen_student['BLEU'], m_valid_unseen_student['BLEU']
+
+            stats = {'epoch': epoch, 'train_sanity': m_train_sanity, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
+            #-------------------------------------------------------
+            # time
+            time_report['compute_metrics_validation_sets'] += time.time() - start_time
 
             # new best valid_seen metric
             if m_valid_seen['BLEU'] > best_metric['valid_seen']:
@@ -212,6 +211,7 @@ class Module(nn.Module):
                 # time
                 time_report['torch_save_valid_seen'] += time.time() - start_time
 
+            # make debugging output for valid_seen with student-forced predictions
             # time
             start_time = time.time()
             fpred = os.path.join(args.dout, 'valid_seen.debug_epoch_{}.preds.json'.format(epoch))
@@ -241,6 +241,7 @@ class Module(nn.Module):
                 # time
                 time_report['torch_save_valid_unseen'] += time.time() - start_time
 
+            # make debugging output for valid_seen with student-forced predictions
             # time
             start_time = time.time()
             fpred = os.path.join(args.dout, 'valid_unseen.debug_epoch_{}.preds.json'.format(epoch))
@@ -270,7 +271,7 @@ class Module(nn.Module):
                 # time
                 time_report['torch_save_train_sanity'] += time.time() - start_time
 
-            # debug action output josn
+            # make debugging output for train_sanity with student-forced predictions
             # time
             start_time = time.time()
             fpred = os.path.join(args.dout, 'train_sanity.debug_epoch_{}.preds.json'.format(epoch))
@@ -297,11 +298,6 @@ class Module(nn.Module):
             # time
             time_report['torch_save_last'] += time.time() - start_time
 
-            # write stats
-            # for split in stats.keys():
-            #     if isinstance(stats[split], dict):
-            #         for k, v in stats[split].items():
-            #             self.summary_writer.add_scalar(split + '/' + k, v, train_iter)
             pprint.pprint(stats)
 
             # time
@@ -311,7 +307,8 @@ class Module(nn.Module):
             for k, v in sorted(time_report.items(), key=lambda x: x[1], reverse=True):
                 print('{:<30}{:<40}'.format(k, round(v, 3)))
 
-    def run_pred(self, dev, args=None, name='dev', iter=0, validate_with_teacher_forcing=False):
+    def run_pred(self, dev, args=None, name='dev', iter=0, 
+                 validate_teacher_forcing=False, validate_sample_output=False):
         '''
         validation loop
         '''
@@ -322,19 +319,21 @@ class Module(nn.Module):
         total_loss = list()
         dev_iter = iter
         for batch, feat in self.iterate(dev, args.batch):
-            out = self.forward(feat, validate_with_teacher_forcing=validate_with_teacher_forcing)
+            out = self.forward(feat, validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
             preds = self.extract_preds(out, batch, feat)
             p_dev.update(preds)
             loss, perplexity = self.compute_loss(out, batch, feat)
             for k, v in loss.items():
                 ln = 'batch_loss_' + k
                 m_dev[ln].append(v.item())
-                self.summary_writer.add_scalar("%s/%s" % (name, ln), v.item(), dev_iter)
+                if validate_teacher_forcing:
+                    self.summary_writer.add_scalar("%s/%s" % (name, ln), v.item(), dev_iter)
             sum_loss = sum(loss.values())
-            self.summary_writer.add_scalar("%s/batch_loss" % (name), sum_loss, dev_iter)
             total_loss.append(float(sum_loss.detach().cpu()))
             m_dev['perplexity'].append(perplexity.item())
-            self.summary_writer.add_scalar("%s/batch_perplexity" % (name), perplexity.item(), dev_iter)
+            if validate_teacher_forcing:
+                self.summary_writer.add_scalar("%s/batch_total_loss" % (name), sum_loss, dev_iter)
+                self.summary_writer.add_scalar("%s/batch_perplexity" % (name), perplexity.item(), dev_iter)
             dev_iter += len(batch)
 
         m_dev = {k: sum(v) / len(v) for k, v in m_dev.items()}
@@ -364,80 +363,103 @@ class Module(nn.Module):
         if self.args.fast_epoch:
             train_sanity = train_sanity[:16]
             valid_seen = valid_seen[:16]
-            valid_unseen = valid_unseen[:16]        
+            valid_unseen = valid_unseen[:16]
 
         # display dout
         print("Saving to: %s" % self.args.dout)
 
         #-------------------------------------------------------
         # compute metrics for train_sanity, teacher-forcing
-        p_train_sanity, train_sanity_iter, total_train_sanity_loss, m_train_sanity = self.run_pred(train_sanity, args=args, name='train_sanity', iter=0, validate_with_teacher_forcing=True)
-        m_train_sanity.update(self.compute_metric(p_train_sanity, train_sanity))
-        m_train_sanity['total_loss'] = float(total_train_sanity_loss)
-        self.summary_writer.add_scalar('train_sanity/epoch_perplexity_teacher_forcing', m_train_sanity['perplexity'], epoch)
-        self.summary_writer.add_scalar('train_sanity/epoch_BLEU_teacher_forcing', m_train_sanity['BLEU'], epoch)
-        self.summary_writer.add_scalar('train_sanity/epoch_total_loss_teacher_forcing', m_train_sanity['total_loss'], epoch)
+        _, _, total_train_sanity_loss, m_train_sanity_teacher = self.run_pred(train_sanity, args=args, name='train_sanity', iter=0, validate_teacher_forcing=True)
+        m_train_sanity_teacher['total_loss'] = float(total_train_sanity_loss)
+        self.summary_writer.add_scalar('train_sanity/epoch_perplexity_teacher_forcing', m_train_sanity_teacher['perplexity'], epoch)
+        self.summary_writer.add_scalar('train_sanity/epoch_total_loss_teacher_forcing', m_train_sanity_teacher['total_loss'], epoch)
              
         # compute metrics for valid_seen, teacher-forcing
-        p_valid_seen, valid_seen_iter, total_valid_seen_loss, m_valid_seen = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0, validate_with_teacher_forcing=True)
-        m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
-        m_valid_seen['total_loss'] = float(total_valid_seen_loss)
-        self.summary_writer.add_scalar('valid_seen/epoch_perplexity_teacher_forcing', m_valid_seen['perplexity'], epoch)
-        self.summary_writer.add_scalar('valid_seen/epoch_BLEU_teacher_forcing', m_valid_seen['BLEU'], epoch)
-        self.summary_writer.add_scalar('valid_seen/epoch_total_loss_teacher_forcing', m_valid_seen['total_loss'], epoch)
+        _, _, total_valid_seen_loss, m_valid_seen_teacher = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0, validate_teacher_forcing=True)
+        m_valid_seen_teacher['total_loss'] = float(total_valid_seen_loss)
+        self.summary_writer.add_scalar('valid_seen/epoch_perplexity_teacher_forcing', m_valid_seen_teacher['perplexity'], epoch)
+        self.summary_writer.add_scalar('valid_seen/epoch_total_loss_teacher_forcing', m_valid_seen_teacher['total_loss'], epoch)
 
         # compute metrics for valid_unseen, teacher-forcing
-        p_valid_unseen, valid_unseen_iter, total_valid_unseen_loss, m_valid_unseen = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0, validate_with_teacher_forcing=True)
-        m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
-        m_valid_unseen['total_loss'] = float(total_valid_unseen_loss)
-        self.summary_writer.add_scalar('valid_unseen/epoch_perplexity_teacher_forcing', m_valid_unseen['perplexity'], epoch)
-        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_teacher_forcing', m_valid_unseen['BLEU'], epoch)
-        self.summary_writer.add_scalar('valid_unseen/epoch_total_loss_teacher_forcing', m_valid_unseen['total_loss'], epoch)
+        _, _, total_valid_unseen_loss, m_valid_unseen_teacher = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0, validate_teacher_forcing=True)
+        m_valid_unseen_teacher['total_loss'] = float(total_valid_unseen_loss)
+        self.summary_writer.add_scalar('valid_unseen/epoch_perplexity_teacher_forcing', m_valid_unseen_teacher['perplexity'], epoch)
+        self.summary_writer.add_scalar('valid_unseen/epoch_total_loss_teacher_forcing', m_valid_unseen_teacher['total_loss'], epoch)
 
         #-------------------------------------------------------
-        # compute metrics for train_sanity, student-forcing
-        p_train_sanity, train_sanity_iter, total_train_sanity_loss, m_train_sanity = self.run_pred(train_sanity, args=args, name='train_sanity', iter=0)
-        m_train_sanity.update(self.compute_metric(p_train_sanity, train_sanity))
-        m_train_sanity['total_loss'] = float(total_train_sanity_loss)
-        self.summary_writer.add_scalar('train_sanity/epoch_perplexity_student_forcing', m_train_sanity['perplexity'], epoch)
-        self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing', m_train_sanity['BLEU'], epoch)
-        self.summary_writer.add_scalar('train_sanity/epoch_total_loss_student_forcing', m_train_sanity['total_loss'], epoch)
+        # compute metrics for train_sanity, student-forcing, argmax
+        p_train_sanity_argmax, _, _, m_train_sanity_student_argmax = self.run_pred(train_sanity, args=args, name='train_sanity', iter=0)
+        m_train_sanity_student_argmax.update(self.compute_metric(p_train_sanity_argmax, train_sanity))
+        self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing_argmax', m_train_sanity_student_argmax['BLEU'], epoch)
              
-        # compute metrics for valid_seen, student-forcing
-        p_valid_seen, valid_seen_iter, total_valid_seen_loss, m_valid_seen = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0)
-        m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
-        m_valid_seen['total_loss'] = float(total_valid_seen_loss)
-        self.summary_writer.add_scalar('valid_seen/epoch_perplexity_student_forcing', m_valid_seen['perplexity'], epoch)
-        self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing', m_valid_seen['BLEU'], epoch)
-        self.summary_writer.add_scalar('valid_seen/epoch_total_loss_student_forcing', m_valid_seen['total_loss'], epoch)
+        # compute metrics for valid_seen, student-forcing, argmax
+        p_valid_seen_argmax, _, _, m_valid_seen_student_argmax = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0)
+        m_valid_seen_student_argmax.update(self.compute_metric(p_valid_seen_argmax, valid_seen))
+        self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing_argmax', m_train_sanity_student_argmax['BLEU'], epoch)
 
-        # compute metrics for valid_unseen, student-forcing
-        p_valid_unseen, valid_unseen_iter, total_valid_unseen_loss, m_valid_unseen = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0)
-        m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
-        m_valid_unseen['total_loss'] = float(total_valid_unseen_loss)
-        self.summary_writer.add_scalar('valid_unseen/epoch_perplexity_student_forcing', m_valid_unseen['perplexity'], epoch)
-        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing', m_valid_unseen['BLEU'], epoch)
-        self.summary_writer.add_scalar('valid_unseen/epoch_total_loss_student_forcing', m_valid_unseen['total_loss'], epoch)
+        # compute metrics for valid_unseen, student-forcing, argmax
+        p_valid_unseen_argmax, _, _, m_valid_unseen_student_argmax = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0)
+        m_valid_unseen_student_argmax.update(self.compute_metric(p_valid_unseen_argmax, valid_unseen))
+        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing_argmax', m_train_sanity_student_argmax['BLEU'], epoch)
 
         #-------------------------------------------------------
+        # compute metrics for train_sanity, student-forcing, sampled
+        p_train_sanity_sampled, _, _, m_train_sanity_student_sampled = self.run_pred(train_sanity, args=args, name='train_sanity', iter=0, validate_sample_output=True)
+        m_train_sanity_student_sampled.update(self.compute_metric(p_train_sanity_sampled, train_sanity))
+        self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing_sampled', m_train_sanity_student_sampled['BLEU'], epoch)
+             
+        # compute metrics for valid_seen, student-forcing, sampled
+        p_valid_seen_sampled, _, _, m_valid_seen_student_sampled = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0, validate_sample_output=True)
+        m_valid_seen_student_sampled.update(self.compute_metric(p_valid_seen_sampled, valid_seen))
+        self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing_sampled', m_train_sanity_student_sampled['BLEU'], epoch)
+
+        # compute metrics for valid_unseen, student-forcing, sampled
+        p_valid_unseen_sampled, _, _, m_valid_unseen_student_sampled = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0, validate_sample_output=True)
+        m_valid_unseen_student_sampled.update(self.compute_metric(p_valid_unseen_sampled, valid_unseen))
+        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing_sampled', m_train_sanity_student_sampled['BLEU'], epoch)
+
+        #-------------------------------------------------------
+        m_train_sanity, m_valid_seen, m_valid_unseen = {}, {}, {}
+
+        m_train_sanity['perplexity'], m_valid_seen['perplexity'], m_valid_unseen['perplexity'] = \
+            m_train_sanity_teacher['perplexity'], m_valid_seen_teacher['perplexity'], m_valid_unseen_teacher['perplexity']
+        m_train_sanity['total_loss'], m_valid_seen['total_loss'], m_valid_unseen['total_loss'] = \
+            m_train_sanity_teacher['total_loss'], m_valid_seen_teacher['total_loss'], m_valid_unseen_teacher['total_loss']
+        m_train_sanity['BLEU_argmax'], m_valid_seen['BLEU_argmax'], m_valid_unseen['BLEU_argmax'] = \
+            m_train_sanity_student_argmax['BLEU'], m_valid_seen_student_argmax['BLEU'], m_valid_unseen_student_argmax['BLEU']
+        m_train_sanity['BLEU_sampled'], m_valid_seen['BLEU_sampled'], m_valid_unseen['BLEU_sampled'] = \
+            m_train_sanity_student_sampled['BLEU'], m_valid_seen_student_sampled['BLEU'], m_valid_unseen_student_sampled['BLEU']
 
         stats = {'epoch': epoch, 'train_sanity': m_train_sanity, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
+        #-------------------------------------------------------
+        # Make Debugging output for student-forced argmax and sampled decoding
 
-        # make debugging output for train_sanity
-        fpred = os.path.join(args.dout, 'train_sanity.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
+        # train_sanity
+        fpred = os.path.join(args.dout, 'train_sanity_argmax.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
         with open(fpred, 'wt') as f:
-            json.dump(self.make_debug(p_train_sanity, train_sanity), f, indent=2)
-
-        # make debugging output for valid_seen
-        fpred = os.path.join(args.dout, 'valid_seen.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
+            json.dump(self.make_debug(p_train_sanity_argmax, train_sanity), f, indent=2)
+        fpred = os.path.join(args.dout, 'train_sanity_sampled.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
         with open(fpred, 'wt') as f:
-            json.dump(self.make_debug(p_valid_seen, valid_seen), f, indent=2)
+            json.dump(self.make_debug(p_train_sanity_sampled, train_sanity), f, indent=2)
 
-        # make debugging output for valid_unseen
-        fpred = os.path.join(args.dout, 'valid_unseen.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
+        # valid_seen
+        fpred = os.path.join(args.dout, 'valid_seen_argmax.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
         with open(fpred, 'wt') as f:
-            json.dump(self.make_debug(p_valid_unseen, valid_unseen), f, indent=2)
+            json.dump(self.make_debug(p_valid_seen_argmax, valid_seen), f, indent=2)
+        fpred = os.path.join(args.dout, 'valid_seen_sampled.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
+        with open(fpred, 'wt') as f:
+            json.dump(self.make_debug(p_valid_seen_sampled, valid_seen), f, indent=2)
 
+        # valid_unseen
+        fpred = os.path.join(args.dout, 'valid_unseen_argmax.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
+        with open(fpred, 'wt') as f:
+            json.dump(self.make_debug(p_valid_unseen_argmax, valid_unseen), f, indent=2)
+        fpred = os.path.join(args.dout, 'valid_unseen_sampled.debug_epoch_{}.preds.json'.format(epoch if epoch is not None else ''))
+        with open(fpred, 'wt') as f:
+            json.dump(self.make_debug(p_valid_unseen_sampled, valid_unseen), f, indent=2)
+
+        #-------------------------------------------------------
         pprint.pprint(stats)
 
         return m_train_sanity, m_valid_seen, m_valid_unseen
@@ -494,7 +516,7 @@ class Module(nn.Module):
                     print ('retrying {}'.format(retry))
                 with open(json_path) as f:
                     data = json.load(f)
-                    return data
+                return data
             except:
                 retry += 1
                 time.sleep(5)
@@ -564,12 +586,20 @@ class Module(nn.Module):
             param_group['lr'] = lr
 
     @classmethod
-    def load(cls, fsave):
+    def load(cls, fsave, retain_args=None):
         '''
         load pth model from disk
         '''
         save = torch.load(fsave)
-        model = cls(save['args'], save['vocab'])
+
+        args = save['args']
+        if retain_args is not None:
+            args.train_teacher_forcing = True # TODO remove
+            args.train_student_forcing_prob = 0. # TODO remove
+            args.data = '/root/data_alfred/json_feat_2.1.0'
+            args.dout = retain_args.dout
+
+        model = cls(args, save['vocab'])
         model.load_state_dict(save['model'])
         next_epoch = int(save['epoch']) + 1
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)

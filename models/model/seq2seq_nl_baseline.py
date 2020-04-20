@@ -29,7 +29,8 @@ class Module(Base):
                            hstate_dropout=args.hstate_dropout,
                            word_dropout=args.word_dropout,
                            input_dropout=args.input_dropout,
-                           teacher_forcing=args.dec_teacher_forcing)
+                           train_teacher_forcing=args.train_teacher_forcing,
+                           train_student_forcing_prob=args.train_student_forcing_prob)
 
         # dropouts
         self.act_dropout = nn.Dropout(args.act_dropout, inplace=True)
@@ -125,12 +126,12 @@ class Module(Base):
             if not self.test_mode:
                 feat['num']['lang_instr'] = [word for desc in feat['num']['lang_instr'] for word in desc]
 
-    def forward(self, feat, max_decode=300, validate_with_teacher_forcing=False):
+    def forward(self, feat, max_decode=300, validate_teacher_forcing=False, validate_sample_output=False):
         # encode entire sequence of low-level actions
         cont_act, enc_act = self.encode_act(feat)
         # run decoder until entire sentence is finished
         state_0 = cont_act, torch.zeros_like(cont_act)
-        res = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0, validate_with_teacher_forcing=validate_with_teacher_forcing)
+        res = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0, validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
         feat.update(res)
         return feat
     

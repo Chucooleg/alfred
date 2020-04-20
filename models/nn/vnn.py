@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-
+import numpy as np
 
 class SelfAttn(nn.Module):
     '''
@@ -301,7 +301,7 @@ class LanguageDecoder(nn.Module):
     '''
 
     def __init__(self, emb, dhid, attn_dropout=0., hstate_dropout=0.,
-                 word_dropout=0., input_dropout=0., teacher_forcing=False):
+                 word_dropout=0., input_dropout=0., train_teacher_forcing=False, train_student_forcing_prob=0.1):
         
         super().__init__()
         # args.demb
@@ -328,7 +328,8 @@ class LanguageDecoder(nn.Module):
         # word fc per time step
         # (1024 + 100, 100)
         self.word = nn.Linear(dhid+dhid+demb, demb)
-        self.teacher_forcing = teacher_forcing
+        self.train_teacher_forcing = train_teacher_forcing
+        self.train_student_forcing_prob = train_student_forcing_prob
         self.h_tm1_fc = nn.Linear(dhid, dhid)
 
         nn.init.uniform_(self.go, -0.1, 0.1)
@@ -359,17 +360,22 @@ class LanguageDecoder(nn.Module):
         word_emb_t = self.word(self.word_dropout(cont_t))
         # (B, demb).mm(demb, vocab size) = (B, vocab size)
         word_t = word_emb_t.mm(self.emb.weight.t())
-
+ 
         return word_t, state_t, act_attn_t
 
-    def forward(self, enc, gold=None, max_decode=150, state_0=None, validate_with_teacher_forcing=False):
+    def forward(self, enc, gold=None, max_decode=150, state_0=None, 
+                validate_teacher_forcing=False, validate_sample_output=False):
         '''
-        enc : (B, T, args.dhid). LSTM encoder per action output
-        gold: (B, T). padded_sequence of word index tokens.
-        max_decode: integer. maximum timesteps - length of language instruction.
-        state_0: tuple (cont_act, torch.zeros.like(cont_act)).
+        enc :                     (B, T, args.dhid). LSTM encoder per action output
+        gold:                     (B, T). padded_sequence of word index tokens.
+        max_decode:               integer. maximum timesteps - length of language instruction.
+        state_0:                  tuple (cont_act, torch.zeros.like(cont_act)).
+        validate_teacher_forcing: boolean. Whether to use ground-truth to score loss and perplexity. 
+                                  Student-forcing is used otherwise.
+        validate_sample_output:   boolean. With student-forcing, whether to decode by sampling (1) or argmax (0).
         '''
-        max_t = gold.size(1) if (self.training or validate_with_teacher_forcing) else max_decode
+        
+        max_t = gold.size(1) if (self.training or validate_teacher_forcing) else max_decode
         batch = enc.size(0)
         e_t = self.go.repeat(batch, 1)
         state_t = state_0
@@ -380,10 +386,25 @@ class LanguageDecoder(nn.Module):
             word_t, state_t, attn_score_t = self.step(enc, e_t, state_t)
             words.append(word_t)
             attn_scores.append(attn_score_t)
-            if self.teacher_forcing and (self.training or validate_with_teacher_forcing):
-                w_t = gold[:, t]
+
+            if self.training:
+                if self.train_teacher_forcing:
+                    w_t = gold[:, t]
+                else:
+                    use_student = np.random.binomial(1, self.train_student_forcing_prob)
+                    if use_student:
+                        w_t = word_t.max(1)[1]
+                    else:
+                        w_t = gold[:, t]
             else:
-                w_t = word_t.max(1)[1]
+                if validate_teacher_forcing:
+                    w_t = gold[:, t]
+                else:
+                    if validate_sample_output:
+                        w_t = torch.multinomial(torch.exp(word_t), 1).squeeze(-1)
+                    else:
+                        # argmax
+                        w_t = word_t.max(1)[1]
             e_t = self.emb(w_t)
 
         results = {

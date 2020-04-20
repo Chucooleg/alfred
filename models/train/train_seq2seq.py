@@ -23,7 +23,6 @@ if __name__ == '__main__':
     parser.add_argument('--preprocess', help='store preprocessed data to json files', action='store_true')
     parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
     parser.add_argument('--save_every_epoch', help='save model after every epoch (warning: consumes a lot of space)', action='store_true')
-    parser.add_argument('--monitor_train_every', help='save debugging json and compute metric for training set at every regular interval. (warning: adds a lot of time)', default=100, type=int)
     parser.add_argument('--model', help='model to use', default='seq2seq_nl_baseline')
     parser.add_argument('--gpu', help='use gpu', action='store_true')
     parser.add_argument('--dout', help='where to save model', default='exp/model:{model}')
@@ -56,7 +55,8 @@ if __name__ == '__main__':
     parser.add_argument('--word_dropout', help='dropout rate for word fc', default=0., type=float)
 
     # other settings
-    parser.add_argument('--dec_teacher_forcing', help='use gpu', action='store_true')
+    parser.add_argument('--train_teacher_forcing', help='use gpu', action='store_true')
+    parser.add_argument('--train_student_forcing_prob', help='bernoulli probability', default=0.1, type=float)
     parser.add_argument('--temp_no_history', help='use gpu', action='store_true')
 
     # debugging

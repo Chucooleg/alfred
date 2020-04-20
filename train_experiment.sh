@@ -19,7 +19,7 @@ export DOUT=$PT_OUTPUT_DIR/exp_philly/model:$MODEL,name:v0_epoch_${EPOCH}_${SUFF
 mkdir $DOUT
 echo 'Script is making directory '${DOUT}
 
-command="python -u models/train/train_seq2seq.py --model $MODEL --dout $DOUT --data $PT_DATA_DIR/$DATA --splits $PT_DATA_DIR/splits/$SPLITS --gpu --dec_teacher_forcing --epoch $EPOCH $EXTRAS"
+command="python -u models/train/train_seq2seq.py --model $MODEL --dout $DOUT --data $PT_DATA_DIR/$DATA --splits $PT_DATA_DIR/splits/$SPLITS --gpu --train_teacher_forcing --epoch $EPOCH $EXTRAS"
 
 echo $command
 $command
