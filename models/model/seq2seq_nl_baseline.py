@@ -29,7 +29,8 @@ class Module(Base):
                            hstate_dropout=args.hstate_dropout,
                            word_dropout=args.word_dropout,
                            input_dropout=args.input_dropout,
-                           teacher_forcing=args.dec_teacher_forcing)
+                           train_teacher_forcing=args.train_teacher_forcing,
+                           train_student_forcing_prob=args.train_student_forcing_prob)
 
         # dropouts
         self.act_dropout = nn.Dropout(args.act_dropout, inplace=True)
@@ -73,10 +74,10 @@ class Module(Base):
                 
                 # # append goal
                 # feat['lang_goal'].append(lang_goal)
-                feat['lang_instr'].append(lang_goal)
+                # feat['lang_instr'].append(lang_goal)
                 
                 # append instr
-                # feat['lang_instr'].append(lang_instr)
+                feat['lang_instr'].append(lang_instr)
                 
                 # append goal + instr
                 # lang_goal_instr = lang_goal + lang_instr
@@ -125,12 +126,12 @@ class Module(Base):
             if not self.test_mode:
                 feat['num']['lang_instr'] = [word for desc in feat['num']['lang_instr'] for word in desc]
 
-    def forward(self, feat, max_decode=300, validate_with_teacher_forcing=False):
+    def forward(self, feat, max_decode=300, validate_teacher_forcing=False, validate_sample_output=False):
         # encode entire sequence of low-level actions
         cont_act, enc_act = self.encode_act(feat)
         # run decoder until entire sentence is finished
         state_0 = cont_act, torch.zeros_like(cont_act)
-        res = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0, validate_with_teacher_forcing=validate_with_teacher_forcing)
+        res = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0, validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
         feat.update(res)
         return feat
     
@@ -263,6 +264,7 @@ class Module(Base):
         m = collections.defaultdict(list)
 
         flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
+        # flatten_isntr = lambda instr: [word.strip() for word in instr]
 
         all_pred_id_ann = list(preds.keys())
         for task in data:
@@ -271,7 +273,8 @@ class Module(Base):
             # grab task data for ann_0, ann_1 and ann_2
             exs = self.load_task_jsons(task)
             # a list of 3 lists of word tokens. (1 for each human annotation, so total 3)
-            ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]            
+            ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]
+            # ref_lang_instrs = [flatten_isntr(ex['ann']['goal']) for ex in exs]         
             # compute bleu score
             m['BLEU'].append(sentence_bleu(ref_lang_instrs, preds[pred_id_ann]['lang_instr'].split(' ')))
             all_pred_id_ann.remove(pred_id_ann)
