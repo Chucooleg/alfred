@@ -74,10 +74,10 @@ class Module(Base):
                 
                 # # append goal
                 # feat['lang_goal'].append(lang_goal)
-                # feat['lang_instr'].append(lang_goal)
+                feat['lang_instr'].append(lang_goal)
                 
                 # append instr
-                feat['lang_instr'].append(lang_instr)
+                # feat['lang_instr'].append(lang_instr)
                 
                 # append goal + instr
                 # lang_goal_instr = lang_goal + lang_instr
@@ -263,8 +263,8 @@ class Module(Base):
         # how does this work during training with teacher forcing !?
         m = collections.defaultdict(list)
 
-        flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
-        # flatten_isntr = lambda instr: [word.strip() for word in instr]
+        # flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
+        flatten_isntr = lambda instr: [word.strip() for word in instr]
 
         all_pred_id_ann = list(preds.keys())
         for task in data:
@@ -273,8 +273,8 @@ class Module(Base):
             # grab task data for ann_0, ann_1 and ann_2
             exs = self.load_task_jsons(task)
             # a list of 3 lists of word tokens. (1 for each human annotation, so total 3)
-            ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]
-            # ref_lang_instrs = [flatten_isntr(ex['ann']['goal']) for ex in exs]         
+            # ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]
+            ref_lang_instrs = [flatten_isntr(ex['ann']['goal']) for ex in exs]         
             # compute bleu score
             m['BLEU'].append(sentence_bleu(ref_lang_instrs, preds[pred_id_ann]['lang_instr'].split(' ')))
             all_pred_id_ann.remove(pred_id_ann)
