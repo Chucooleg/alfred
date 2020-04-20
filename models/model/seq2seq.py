@@ -396,12 +396,12 @@ class Module(nn.Module):
         # compute metrics for valid_seen, student-forcing, argmax
         p_valid_seen_argmax, _, _, m_valid_seen_student_argmax = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0)
         m_valid_seen_student_argmax.update(self.compute_metric(p_valid_seen_argmax, valid_seen))
-        self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing_argmax', m_train_sanity_student_argmax['BLEU'], epoch)
+        self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing_argmax', m_valid_seen_student_argmax['BLEU'], epoch)
 
         # compute metrics for valid_unseen, student-forcing, argmax
         p_valid_unseen_argmax, _, _, m_valid_unseen_student_argmax = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0)
         m_valid_unseen_student_argmax.update(self.compute_metric(p_valid_unseen_argmax, valid_unseen))
-        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing_argmax', m_train_sanity_student_argmax['BLEU'], epoch)
+        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing_argmax', m_valid_unseen_student_argmax['BLEU'], epoch)
 
         #-------------------------------------------------------
         # compute metrics for train_sanity, student-forcing, sampled
@@ -412,12 +412,12 @@ class Module(nn.Module):
         # compute metrics for valid_seen, student-forcing, sampled
         p_valid_seen_sampled, _, _, m_valid_seen_student_sampled = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0, validate_sample_output=True)
         m_valid_seen_student_sampled.update(self.compute_metric(p_valid_seen_sampled, valid_seen))
-        self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing_sampled', m_train_sanity_student_sampled['BLEU'], epoch)
+        self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing_sampled', m_valid_seen_student_sampled['BLEU'], epoch)
 
         # compute metrics for valid_unseen, student-forcing, sampled
         p_valid_unseen_sampled, _, _, m_valid_unseen_student_sampled = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0, validate_sample_output=True)
         m_valid_unseen_student_sampled.update(self.compute_metric(p_valid_unseen_sampled, valid_unseen))
-        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing_sampled', m_train_sanity_student_sampled['BLEU'], epoch)
+        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing_sampled', m_valid_unseen_student_sampled['BLEU'], epoch)
 
         #-------------------------------------------------------
         m_train_sanity, m_valid_seen, m_valid_unseen = {}, {}, {}
