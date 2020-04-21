@@ -32,7 +32,7 @@ class Module(nn.Module):
         self.emb_action_low = nn.Embedding(len(vocab['action_low']), args.demb)
 
         # end tokens TODO need to replace with stop token of language
-        self.stop_token = self.vocab['word'].word2index("<<stop>>", train=False)
+        self.stop_token = self.vocab['word'].word2index("<<goal>>", train=False)
         # self.seg_token = self.vocab['action_low'].word2index("<<seg>>", train=False)  # obsolete?
 
         # set random seed (Note: this is not the seed used to initialize THOR object locations)
