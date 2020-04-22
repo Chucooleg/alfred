@@ -84,7 +84,7 @@ if __name__ == '__main__':
     M = import_module('model.{}'.format(args.model))
     
     for epoch in range(50):
-        resume_path = '/root/data/home/hoyeung/blob_alfred_data/exp_all/model:seq2seq_nl_with_frames,name:v1_epoch_50_local/net_epoch_{}.pth'.format(epoch)
+        resume_path = '/root/data/home/hoyeung/blob_alfred_data/exp_all/model:seq2seq_nl_with_frames,name:v1.5_epoch_50_high_level_instrs/net_epoch_{}.pth'.format(epoch)
         print('resume path: {}'.format(resume_path))
         model, _, _ = M.Module.load(resume_path, args)
         # to gpu
