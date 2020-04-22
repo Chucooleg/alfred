@@ -496,6 +496,8 @@ class Module(nn.Module):
             debug[i] = {
                 # Task Location root
                 'root': ex['root'],
+                # Input - Low-level actions
+                'action_low': [a['discrete_action']['action'] for a in ex['plan']['low_actions']],
                 # Input - High-level actions
                 'action_high': [a['discrete_action']['action'] for a in ex['plan']['high_pddl']],
                 # Predicted - Language
