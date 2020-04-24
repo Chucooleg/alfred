@@ -620,8 +620,6 @@ class Module(nn.Module):
 
         args = save['args']
         if retain_args is not None:
-            args.train_teacher_forcing = True # TODO remove
-            args.train_student_forcing_prob = 0. # TODO remove
             args.data = '/root/data_alfred/json_feat_2.1.0'
             args.dout = retain_args.dout
 
