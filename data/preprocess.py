@@ -43,6 +43,13 @@ class Dataset(object):
         for k, d in splits.items():
             print('Preprocessing {}'.format(k))
 
+            if 'train' in k:
+                k = 'train'
+            elif 'valid_seen' in k:
+                k = 'valid_seen'
+            elif 'valid_unseen' in k:
+                k = 'valid_unseen'
+
             # debugging:
             if self.args.fast_epoch:
                 d = d[:16]
@@ -167,9 +174,9 @@ class Dataset(object):
         action_low_seg_len = len(traj['num']['action_low'])
         lang_instr_seg_len = len(traj['num']['lang_instr'])
         seg_len_diff = action_low_seg_len - lang_instr_seg_len
-        if seg_len_diff != 0:
-            assert (seg_len_diff == 1) # sometimes the alignment is off by one  ¯\_(ツ)_/¯
-            self.merge_last_two_low_actions(traj)
+        # if seg_len_diff != 0:
+        #     assert (seg_len_diff == 1) # sometimes the alignment is off by one  ¯\_(ツ)_/¯
+        #     self.merge_last_two_low_actions(traj)
 
 
     def fix_missing_high_pddl_end_action(self, ex):
