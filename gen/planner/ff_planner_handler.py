@@ -127,9 +127,9 @@ def parse_plan(lines):
     return plan
 
 
-def parse_plan_from_file(self, path):
+def parse_plan_from_file(path):
     lines = [line for line in open(path)]
-    return self.parse_plan(lines)
+    return parse_plan(lines)
 
 
 def get_plan_from_file(args):
