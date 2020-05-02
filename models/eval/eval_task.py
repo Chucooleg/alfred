@@ -80,6 +80,7 @@ class EvalTask(Eval):
                 break
 
             # get action and mask
+            # single string, nested list (1, 300, 300)
             action, mask = m_pred['action_low'], m_pred['action_low_mask'][0]
             mask = np.squeeze(mask, axis=0) if model.has_interaction(action) else None
 

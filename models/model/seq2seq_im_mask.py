@@ -129,9 +129,12 @@ class Module(Base):
 
                 # low-level action mask
                 if load_mask:
+                    # each item is a list of length (num timestep with valid interact)
+                    # each item in the list is np array with shape (1, 300, 300)
                     feat['action_low_mask'].append([self.decompress_mask(a['mask']) for a in ex['num']['action_low'] if a['mask'] is not None])
 
                 # low-level valid interact
+                # each item is a list of length T, booleans
                 feat['action_low_valid_interact'].append([a['valid_interact'] for a in ex['num']['action_low']])
 
 
@@ -271,6 +274,7 @@ class Module(Base):
 
             # sigmoid preds to binary mask
             alow_mask = F.sigmoid(alow_mask)
+            # list of length T, each (1, 300, 300)
             p_mask = [(alow_mask[t] > 0.5).cpu().numpy() for t in range(alow_mask.shape[0])]
 
             task_id_ann = self.get_task_and_ann_id(ex)
