@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 import nn.vnn as vnn
-import collections
+from collection import defaultdict
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
@@ -65,7 +65,10 @@ class Module(Base):
         tensorize and pad batch input
         '''
         device = torch.device('cuda') if self.args.gpu else torch.device('cpu')
-        feat = collections.defaultdict(list)
+
+        batch_size = len(batch)
+        # feat[feature_name][subgoal index][batch index] = feature iterable over timesteps
+        feat = defaultdict(lambda: defaultdict(lambda: defaultdict(None)))
 
         for ex in batch:
             ###########
@@ -368,7 +371,7 @@ class Module(Base):
         '''
         compute f1 and extract match scores for output
         '''
-        m = collections.defaultdict(list)
+        m = defaultdict(list)
         for task in data:
             ex = self.load_task_json(task)
             i = self.get_task_and_ann_id(ex)

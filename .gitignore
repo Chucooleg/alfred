@@ -4,3 +4,5 @@
 .ptignore
 xorg.*
 *.json
+*checkpoint.ipynb
+*events.out.tfevents.*
