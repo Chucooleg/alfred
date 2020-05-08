@@ -10,3 +10,7 @@ exp_all
 .ptignore
 pt_yaml_archive/
 phillytools/
+*.txt
+*.old
+*.log
+*.conf
