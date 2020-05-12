@@ -197,7 +197,7 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
         packed_input = pack_padded_sequence(inp_seq, seq_lengths, batch_first=True, enforce_sorted=False)
 
         # Encode entire subgoal sequence
-        # packed sequence object, (h_0, c_0) tuple
+        # packed sequence object, (h_n, c_n) tuple
         enc_act, curr_subgoal_states = self.encoder(input=packed_input, hx=last_subgoal_states)
         # (B, t, args.dhid*2)
         enc_act, _ = pad_packed_sequence(enc_act, batch_first=True)
@@ -207,7 +207,7 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
         # (B, args.dhid*2)
         cont_act = self.enc_att(enc_act)
 
-        # return both compact, per-step representations, (h_0, c_0) for starting next subgoal encoding
+        # return both compact, per-step representations, (h_n, c_n) for starting next subgoal encoding
         return cont_act, enc_act, curr_subgoal_states 
 
 
@@ -519,6 +519,7 @@ class LanguageDecoder(nn.Module):
         
         max_t = gold.size(1) if (self.training or validate_teacher_forcing) else max_decode
         batch = enc.size(0)
+        # go is a learned embedding
         e_t = self.go.repeat(batch, 1)
         state_t = state_0
 
