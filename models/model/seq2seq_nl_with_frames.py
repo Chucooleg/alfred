@@ -23,7 +23,7 @@ class Module(Base):
         super().__init__(args, vocab)
 
         # encoder and self-attention
-        encoder = vnn.ActionFrameAttnEncoder
+        encoder = vnn.ActionFrameAttnEncoderFullSeq
         self.enc = encoder( self.emb_action_low, args.dframe, args.dhid,
                             act_dropout=args.act_dropout,
                             vis_dropout=args.vis_dropout,
@@ -180,7 +180,7 @@ class Module(Base):
         cont_act, enc_act = self.enc(feat)
         # run decoder until entire sentence is finished
         state_0 = cont_act, torch.zeros_like(cont_act)
-        res = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0, validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
+        res, _ = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0, validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
         feat.update(res)
         return feat
     

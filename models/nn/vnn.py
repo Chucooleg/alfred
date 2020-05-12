@@ -71,7 +71,7 @@ class ResnetVisualEncoder(nn.Module):
 
 class ActionFrameAttnEncoder(nn.Module):
     '''
-    action and frame sequence encoder
+    action and frame sequence encoder base
     '''
 
     def __init__(self, emb, dframe, dhid,
@@ -81,6 +81,7 @@ class ActionFrameAttnEncoder(nn.Module):
         # Embedding matrix for Actions
         self.emb = emb
         self.dhid = dhid
+        self.bidirectional = bidirectional
         self.dframe = dframe
         self.demb = emb.weight.size(1)
 
@@ -93,7 +94,7 @@ class ActionFrameAttnEncoder(nn.Module):
 
         # Image + Action encoder
         self.encoder = nn.LSTM(self.demb+self.dframe, self.dhid, 
-                               bidirectional=bidirectional, 
+                               bidirectional=self.bidirectional, 
                                batch_first=True)
 
         # Self Attn 
@@ -111,17 +112,15 @@ class ActionFrameAttnEncoder(nn.Module):
         vis_feat = vis_feat.reshape(B, T, self.dframe)
         return vis_feat
 
-    # def vis_enc_step(self, frames):
-    #     '''
-    #     encode image frames for all time steps
-    #     '''
-    #     # (B, T, args.dframe)
-    #     vis_feat = torch.empty(frames.shape[0], frames.shape[1], self.dframe, device=torch.device('cuda'))
-    #     t_seq = frames.shape[1]  # T
-    #     for t in range(t_seq):
-    #         # shape (B, args.dframe)
-    #         vis_feat[:, t, :] = self.vis_encoder(frames[:, t])
-    #     return vis_feat
+class ActionFrameAttnEncoderFullSeq(ActionFrameAttnEncoder):
+    '''
+    action and frame sequence encoder. encode all subgoals at once.
+    '''
+
+    def __init__(self, emb, dframe, dhid,
+                 act_dropout=0., vis_dropout=0., bidirectional=True):
+        super(ActionFrameAttnEncoderFullSeq, self).__init__(emb, dframe, dhid,
+                 act_dropout=act_dropout., vis_dropout=vis_dropout., bidirectional=bidirectional)
 
     def forward(self, feat):
         '''
@@ -159,6 +158,57 @@ class ActionFrameAttnEncoder(nn.Module):
 
         # return both compact and per-step representations
         return cont_act, enc_act
+        
+
+class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
+    '''
+    action and frame sequence encoder. encode one subgoal at a time.
+    '''
+
+    def __init__(self, emb, dframe, dhid,
+                 act_dropout=0., vis_dropout=0., bidirectional=True):
+        super(ActionFrameAttnEncoderPerSubgoal, self).__init__(emb, dframe, dhid,
+                 act_dropout=act_dropout., vis_dropout=vis_dropout., bidirectional=bidirectional)
+
+    def forward(self, feat_subgoal, last_subgoal_states):
+        '''
+        encode low-level actions and image frames
+
+        Args:
+        last_subgoal_states: tuple. (h_0, c_0) argument per nn.LSTM documentation.
+        '''
+        # Action Sequence
+        # (B, t) with t = max(l), already padded
+        pad_seq = feat_subgoal['action_low']
+        # (B,). Each value is l for the example
+        seq_lengths = feat_subgoal['action_low_seq_lengths']
+        # (B, t, args.demb)
+        emb_act = self.emb(pad_seq)        
+
+        # Image Frames
+        # (B, t, 512, 7, 7) with t = max(l), already padded
+        frames = self.vis_dropout(feat['frames'])
+        # (B, t, args.dframe)
+        vis_feat = self.vis_enc_step(frames)
+
+        # Pack inputs together
+        # (B, t, args.demb+args.dframe)
+        inp_seq = torch.cat([emb_act, vis_feat], dim=2)
+        packed_input = pack_padded_sequence(inp_seq, seq_lengths, batch_first=True, enforce_sorted=False)
+
+        # Encode entire subgoal sequence
+        # packed sequence object, (h_0, c_0) tuple
+        enc_act, curr_subgoal_states = self.encoder(input=packed_input, hx=last_subgoal_states)
+        # (B, t, args.dhid*2)
+        enc_act, _ = pad_packed_sequence(enc_act, batch_first=True)
+        self.act_dropout(enc_act)
+
+        # Apply learned self-attention
+        # (B, args.dhid*2)
+        cont_act = self.enc_att(enc_act)
+
+        # return both compact, per-step representations, (h_0, c_0) for starting next subgoal encoding
+        return cont_act, enc_act, curr_subgoal_states 
 
 
 class MaskDecoder(nn.Module):
@@ -505,4 +555,4 @@ class LanguageDecoder(nn.Module):
             'out_attn_scores': torch.stack(attn_scores, dim=1),
             'state_t': state_t
         }
-        return results
+        return results, state_t
