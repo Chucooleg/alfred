@@ -266,6 +266,9 @@ class Module(Base):
         if last_dec_state is None:
             # cont_act has shape (B, *)
             last_dec_state = cont_act, torch.zeros_like(cont_act)
+
+        # Use last_dec_state, enc_act, 
+
         # run decoder until entire sentence in subgoal is finished
         res, curr_dec_state = self.dec(enc_act, max_decode=max_decode, gold=feat_subgoal['lang_instr'], state_0=last_dec_state, 
         validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
