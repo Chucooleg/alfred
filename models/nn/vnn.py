@@ -120,7 +120,7 @@ class ActionFrameAttnEncoderFullSeq(ActionFrameAttnEncoder):
     def __init__(self, emb, dframe, dhid,
                  act_dropout=0., vis_dropout=0., bidirectional=True):
         super(ActionFrameAttnEncoderFullSeq, self).__init__(emb, dframe, dhid,
-                 act_dropout=act_dropout., vis_dropout=vis_dropout., bidirectional=bidirectional)
+                 act_dropout=act_dropout, vis_dropout=vis_dropout, bidirectional=bidirectional)
 
     def forward(self, feat):
         '''
@@ -168,7 +168,7 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
     def __init__(self, emb, dframe, dhid,
                  act_dropout=0., vis_dropout=0., bidirectional=True):
         super(ActionFrameAttnEncoderPerSubgoal, self).__init__(emb, dframe, dhid,
-                 act_dropout=act_dropout., vis_dropout=vis_dropout., bidirectional=bidirectional)
+                 act_dropout=act_dropout, vis_dropout=vis_dropout, bidirectional=bidirectional)
 
     def forward(self, feat_subgoal, last_subgoal_states):
         '''

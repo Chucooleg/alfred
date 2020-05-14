@@ -12,6 +12,7 @@ from nltk.translate.bleu_score import sentence_bleu
 
 # time
 import time
+import json
 from collections import defaultdict
 
 class Module(Base):
@@ -21,6 +22,8 @@ class Module(Base):
         Seq2Seq agent
         '''
         super().__init__(args, vocab)
+
+        self.pp_folder = args.pp_folder
 
         # encoder and self-attention
         encoder = vnn.ActionFrameAttnEncoderPerSubgoal
@@ -57,7 +60,7 @@ class Module(Base):
         self.max_subgoals = 25
 
         # reset model
-        self.reset()
+        # self.reset() # TODO do we need to reset?
         
     def featurize(self, batch):
         '''tensoroze and pad batch input'''
@@ -72,6 +75,7 @@ class Module(Base):
     
         batch_size = len(batch)
         max_num_subgoals = 0
+        max_num_objects = 0
         for batch_i, ex in enumerate(batch):
 
             # how many subgoals?
@@ -107,6 +111,8 @@ class Module(Base):
             #########
             # inputs
             #########
+
+            # -----------loading action tokens------------------
             # time
             start_time = time.time()
             # low-level action
@@ -174,19 +180,42 @@ class Module(Base):
             
             # time
             time_report['featurize_input_resnet_features'] += time.time() - start_time
-            # ------------------------------------------------------
+            # -----------loading state features------------------
 
+            states_root = root.replace('train/', '').replace('valid_seen/', '').replace('valid_unseen/', '')
+            with open(os.path.join(states_root, '{}/extracted_feature_states.json'.format(self.pp_folder)), 'r') as f:
+                obj_states = json.load(f)
+
+            num_objects = len(obj_states['objectTypeList'])
+            if num_objects > max_num_objects:
+                max_num_objects = num_objects
+
+            for subgoal_i in range(num_subgoals):
+                # each is a list (timestep) of lists (num objects)
+                # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
+                feat['object_state_change'][subgoal_i][batch_i] = obj_states['type_state_change'][subgoal_i]
+                # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
+                feat['object_visibility'][subgoal_i][batch_i] = obj_states['type_visibile'][subgoal_i]
+                # each is a list (timestep) of lists (num objects)
+                # [[apple idx, pear idx, ...], [apple idx, pear idx, ...], [apple idx, pear idx, ...]]
+                num_timesteps = len(obj_states['type_state_change'][subgoal_i])
+                feat['object_token_id'][subgoal_i][batch_i] = [obj_states['objectTypeList_TypeNum'] for _ in range(num_timesteps)]
+            # ---------------------------------------------------
+            # import pdb; pdb.set_trace()
+             # --------------------------------------------------
+
+        # tensorization and padding
         # time
         start_time = time.time()
         feat['action_low_seq_lengths'] = []
-        # tensorization and padding
         for k, v in feat.items():
 
-            if k in {'action_low'}:
-                # action embedding and padding
+            if k == 'action_low':
+
                 all_pad_seqs = []
                 all_seq_lengths = []
                 empty_tensor = torch.ones(torch.tensor(v[0][0][0]).unsqueeze(0).shape, device=device) * self.pad
+
                 for subgoal_i in range(max_num_subgoals):
                     # list of length B. each shaped (l,) with l = time steps in subgoal, value is integer action index.
                     seqs = []
@@ -209,29 +238,62 @@ class Module(Base):
                 # list length=max_num_subgoals, each (B,). Each value is l for the example
                 feat[k+'_seq_lengths'] = all_seq_lengths
 
-            elif not 'seq_lengths' in k:  # lang_instr, frames
+            elif k in {'lang_instr', 'frames'}:
 
-                # default: tensorize and pad sequence
                 all_pad_seqs = []
+                # v[0][0][0] -- [subgoal 0][batch 0][time step 0]
+                # shape (1, *)
                 empty_tensor = torch.ones(torch.tensor(v[0][0][0]).unsqueeze(0).shape, device=device, dtype=torch.float if ('frames' in k) else torch.long) * self.pad
+
                 for subgoal_i in range(max_num_subgoals):
                     # list of length B. each shaped (l, *). l = time steps in subgoal.
                     seqs = []
                     for batch_i in range(batch_size):
                         if isinstance(v[subgoal_i][batch_i], type(None)):
+                            # each shape (1, *)
                             seqs.append(empty_tensor)
                         else:
+                            # each shape (t, *)
                             seqs.append(torch.tensor(v[subgoal_i][batch_i], device=device, dtype=torch.float if ('frames' in k) else torch.long))
-                    # tensor shape (B, t, *) with t = max(l)
-                    # tensor shape (B, t, 512, 7, 7) for k='frames'
+                    # each tensor shape (B, t, *) with t = max(l)
+                    # each tensor shape (B, t, 512, 7, 7) for k='frames'
                     all_pad_seqs.append(pad_sequence(seqs, batch_first=True, padding_value=self.pad))
 
                 # list length=max_num_subgoals, each (B, t, *) with T = max(l)
                 # list length=max_num_subgoals, each (B, t, 512, 7, 7) for k='frames'
                 assert all_pad_seqs[-1].shape[0] == batch_size
                 feat[k] = all_pad_seqs
+            
+            elif k in {'object_token_id', 'object_visibility', 'object_state_change'}:
+
+                all_pad_seqs = []
+                # shape (1, max_num_objects) -- single time step, 40 objects
+                empty_tensor = torch.ones((1, max_num_objects), device=device, dtype=torch.long if ('token_id' in k) else torch.float) * self.pad
+
+                for subgoal_i in range(max_num_subgoals):
+                    # list of length B. each shaped (l, *). l = time steps in subgoal.
+                    seqs = []
+                    for batch_i in range(batch_size):
+                        if isinstance(v[subgoal_i][batch_i], type(None)):
+                            # each shape (1, max_num_objects)
+                            seqs.append(empty_tensor)
+                        else:
+                            # shape (t, max_num_objects)
+                            object_tensor = torch.ones(len(v[subgoal_i][batch_i]), max_num_objects, device=device, dtype=torch.long if ('token_id' in k) else torch.float) * self.pad
+                            # fill shape shape (t, <=max_num_objects)
+                            object_tensor[:, :len(v[subgoal_i][batch_i][0])] = torch.tensor(v[subgoal_i][batch_i])
+                            seqs.append(object_tensor)
+                    # each tensor shape (B, t, max_num_objects) with t = max(l)
+                    all_pad_seqs.append(pad_sequence(seqs, batch_first=True, padding_value=self.pad))
+
+                # list length=max_num_subgoals, each (B, t, max_num_objects) with T = max(l)
+                assert all_pad_seqs[-1].shape[0] == batch_size and all_pad_seqs[-1].shape[2] == max_num_objects
+                feat[k] = all_pad_seqs
+
         # time
         time_report['featurize_tensorization_and_padding'] += time.time() - start_time
+        
+        import pdb; pdb.set_trace()
 
         return feat, time_report
     
@@ -257,6 +319,7 @@ class Module(Base):
         # encode subgoal action seq and frames
         if last_enc_state is None:
             # encode entire sequence of low-level actions
+            # (B, args.dhid*2), (B, t, args.dhid*2)
             cont_act, enc_act, curr_enc_state = self.enc(feat_subgoal)
         else:
             # encode entire sequence of low-level actions
