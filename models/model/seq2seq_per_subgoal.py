@@ -17,30 +17,40 @@ from collections import defaultdict
 
 class Module(Base):
 
-    def __init__(self, args, vocab):
+    def __init__(self, args, vocab, object_vocab):
         '''
         Seq2Seq agent
         '''
-        super().__init__(args, vocab)
+        super().__init__(args, vocab, object_vocab)
 
         self.pp_folder = args.pp_folder
 
+        self.maxpool_over_object_states = args.maxpool_over_object_states
+        self.aux_loss_over_object_states = args.aux_loss_over_object_states
+
         # encoder and self-attention
         encoder = vnn.ActionFrameAttnEncoderPerSubgoal
-        self.enc = encoder( self.emb_action_low, args.dframe, args.dhid,
+        self.enc = encoder( emb=self.emb_action_low,
+                            obj_emb=self.emb_object,
+                            dframe=args.dframe, 
+                            dhid=args.dhid,
                             act_dropout=args.act_dropout,
                             vis_dropout=args.vis_dropout,
-                            bidirectional=True)
+                            bidirectional=True,
+                            maxpool_over_object_states=self.maxpool_over_object_states)
 
         # language decoder
         decoder = vnn.LanguageDecoder
-        self.dec = decoder(self.emb_word, 2*args.dhid, 
-                           attn_dropout=args.attn_dropout,
-                           hstate_dropout=args.hstate_dropout,
-                           word_dropout=args.word_dropout,
-                           input_dropout=args.input_dropout,
-                           train_teacher_forcing=args.train_teacher_forcing,
-                           train_student_forcing_prob=args.train_student_forcing_prob)
+        self.dec = decoder( emb=self.emb_word,
+                            obj_emb=self.emb_object,
+                            dhid=2*args.dhid, 
+                            attn_dropout=args.attn_dropout,
+                            hstate_dropout=args.hstate_dropout,
+                            word_dropout=args.word_dropout,
+                            input_dropout=args.input_dropout,
+                            train_teacher_forcing=args.train_teacher_forcing,
+                            train_student_forcing_prob=args.train_student_forcing_prob,
+                            aux_loss_over_object_states=self.aux_loss_over_object_states)
 
         # dropouts
         self.vis_dropout = nn.Dropout(args.vis_dropout)
@@ -51,6 +61,10 @@ class Module(Base):
         self.state_t = None
         self.e_t = None
         self.test_mode = False
+
+        # Auxiliary Loss
+        self.aux_criterion = nn.BCEWithLogitsLoss(reduction='none')
+        self.language_crtierion = nn.CrossEntropyLoss(reduction='mean', ignore_index=0)
 
         # paths
         self.root_path = os.getcwd()
@@ -78,10 +92,10 @@ class Module(Base):
         max_num_objects = 0
         for batch_i, ex in enumerate(batch):
 
-            # how many subgoals?
-            num_subgoals = len(ex['num']['action_low'])
+            # ignore last subgoal (i.e. no-op)
+            num_subgoals = len(ex['num']['action_low']) - 1
             if num_subgoals > max_num_subgoals:
-                max_num_subgoals = num_subgoals     
+                max_num_subgoals = num_subgoals
 
             #########
             # outputs
@@ -100,10 +114,7 @@ class Module(Base):
                 
                 # append instr
                 for subgoal_i in range(num_subgoals):
-                    feat['lang_instr'][subgoal_i][batch_i] = lang_instr[subgoal_i]
-
-                # # append goal TODO later
-                # feat['lang_goal'].append(lang_goal)
+                    feat['lang_instr'][subgoal_i][batch_i] = lang_instr[subgoal_i] + [self.word_stop_token]
    
             # time
             time_report['featurize_outputs'] += time.time() - start_time
@@ -116,8 +127,9 @@ class Module(Base):
             # time
             start_time = time.time()
             # low-level action
-            for subgoal_i, a_group in enumerate(ex['num']['action_low']):
-                feat['action_low'][subgoal_i][batch_i] = [a['action'] for a in a_group]
+            for subgoal_i in range(num_subgoals):
+                a_group = ex['num']['action_low'][subgoal_i]
+                feat['action_low'][subgoal_i][batch_i] = [a['action'] for a in a_group] + [self.action_stop_token]
             # time
             time_report['featurize_input_action_low'] += time.time() - start_time
 
@@ -136,17 +148,15 @@ class Module(Base):
             time_report['featurize_torch_load_time'] += time.time() - torch_load_start_time
 
             # number of low-level actions in trajectory data, excluding <<no-op>> at the end.
-            num_low_actions = len(ex['plan']['low_actions'])  # 67
+            num_low_actions = len(ex['plan']['low_actions'])  # 67, excludes last subgoal <<stop>> 
             # number of feat frames exist in raw data for this task
-            num_feat_frames = im.shape[0]
+            num_feat_frames = im.shape[0]  # 67, excludes last subgoal <<stop>> 
 
             # list len=num subgoals
-            num_actions_per_subgoal = [len(a_group) for a_group in  ex['num']['action_low']]
+            num_actions_per_subgoal = [len(ex['num']['action_low'][subgoal_i]) for subgoal_i in range(num_subgoals)]
 
             # list(num subgoals list(time step per subgoal tensor shape (512, 7, 7)))
             keep = [[None for _ in range(num_acts)] for num_acts in num_actions_per_subgoal]
-            # last subgoal contains only <<no-op>>
-            assert len(keep[-1]) == 1
 
             if num_low_actions != num_feat_frames:
                 last_image_low_idx = 0
@@ -171,10 +181,10 @@ class Module(Base):
                         high_idx = ex['num']['low_to_high_idx'][i]
                     keep[high_idx][low_idx] = im[i]
                     low_idx += 1 
-            # append no-op image
-            keep[-1][0] = keep[-2][-1]
 
             for subgoal_i, subgoal_frames in enumerate(keep):
+                # append no-op image to last of each subgoal
+                subgoal_frames.append(subgoal_frames[-1])
                 # tensor shape(num time steps, 512, 7, 7)
                 feat['frames'][subgoal_i][batch_i] = torch.stack(subgoal_frames, dim=0)
             
@@ -193,16 +203,13 @@ class Module(Base):
             for subgoal_i in range(num_subgoals):
                 # each is a list (timestep) of lists (num objects)
                 # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
-                feat['object_state_change'][subgoal_i][batch_i] = obj_states['type_state_change'][subgoal_i]
+                feat['object_state_change'][subgoal_i][batch_i] = obj_states['type_state_change'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
                 # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
-                feat['object_visibility'][subgoal_i][batch_i] = obj_states['type_visibile'][subgoal_i]
+                feat['object_visibility'][subgoal_i][batch_i] = obj_states['type_visibile'][subgoal_i] + [obj_states['type_visibile'][subgoal_i][-1]]  # include <<stop>>
                 # each is a list (timestep) of lists (num objects)
                 # [[apple idx, pear idx, ...], [apple idx, pear idx, ...], [apple idx, pear idx, ...]]
-                num_timesteps = len(obj_states['type_state_change'][subgoal_i])
+                num_timesteps = len(obj_states['type_state_change'][subgoal_i]) + 1  # include <<stop>>
                 feat['object_token_id'][subgoal_i][batch_i] = [obj_states['objectTypeList_TypeNum'] for _ in range(num_timesteps)]
-            # ---------------------------------------------------
-            # import pdb; pdb.set_trace()
-             # --------------------------------------------------
 
         # tensorization and padding
         # time
@@ -214,7 +221,7 @@ class Module(Base):
 
                 all_pad_seqs = []
                 all_seq_lengths = []
-                empty_tensor = torch.ones(torch.tensor(v[0][0][0]).unsqueeze(0).shape, device=device) * self.pad
+                empty_tensor = torch.ones(torch.tensor(v[0][0][0]).unsqueeze(0).shape, device=device, dtype=torch.long) * self.pad
 
                 for subgoal_i in range(max_num_subgoals):
                     # list of length B. each shaped (l,) with l = time steps in subgoal, value is integer action index.
@@ -223,7 +230,7 @@ class Module(Base):
                     for batch_i in range(batch_size):
                         if isinstance(v[subgoal_i][batch_i], type(None)):
                             seqs.append(empty_tensor)
-                            seq_lengths.append(0) # TODO not sure if this works downstream 
+                            seq_lengths.append(1) # TODO not sure if this works downstream 
                         else:
                             seqs.append(torch.tensor(v[subgoal_i][batch_i], device=device))
                             seq_lengths.append(len(v[subgoal_i][batch_i]))
@@ -293,8 +300,6 @@ class Module(Base):
         # time
         time_report['featurize_tensorization_and_padding'] += time.time() - start_time
         
-        import pdb; pdb.set_trace()
-
         return feat, time_report
     
     # def serialize_lang_action(self, feat):
@@ -307,34 +312,34 @@ class Module(Base):
     #         if not self.test_mode:
     #             feat['num']['lang_instr'] = [word for desc in feat['num']['lang_instr'] for word in desc]
 
-    def forward_one_subgoal(self, feat_subgoal, last_enc_state, last_dec_state, max_decode=300, validate_teacher_forcing=False, validate_sample_output=False):
+    def forward_one_subgoal(self, feat_subgoal, max_decode=300, 
+                            validate_teacher_forcing=False, validate_sample_output=False):
         '''
         feat_subgoal : feature dictionary returned from self.featurize()
-        last_enc_state: encoder (h_0, c_0) from the last subgoal.
-        last_dec_state: decoder (h_0, c_0) from the last subgoal.
         max_decode: integer. Max num words to produce for the subgoal.
         validate_teacher_forcing: Boolean. Whether to use teacher forcing when we are in validation mode.
         validate_sample_output: Boolean. Only used when validate_teacher_forcing=False. True will sample output tokens from output distribution. False will use argmax decoding.
         '''
-        # encode subgoal action seq and frames
-        if last_enc_state is None:
-            # encode entire sequence of low-level actions
-            # (B, args.dhid*2), (B, t, args.dhid*2)
-            cont_act, enc_act, curr_enc_state = self.enc(feat_subgoal)
-        else:
-            # encode entire sequence of low-level actions
-            cont_act, enc_act, curr_enc_state = self.enc(feat_subgoal, last_enc_state)
+        # encode entire subgoal sequence of low-level actions and frames
+        # (B, args.dhid*2), (B, t, args.dhid*2), (h_n, c_n)
+        cont_act, enc_act, curr_enc_state = self.enc(
+            feat_subgoal=feat_subgoal, 
+            last_subgoal_hx=None
+            )
 
-        # decode subgoal language instruction
-        if last_dec_state is None:
-            # cont_act has shape (B, *)
-            last_dec_state = cont_act, torch.zeros_like(cont_act)
-
-        # Use last_dec_state, enc_act, 
+        # cont_act has shape (B, args.dhid*2)
+        dec_state_0 = cont_act, torch.zeros_like(cont_act)
 
         # run decoder until entire sentence in subgoal is finished
-        res, curr_dec_state = self.dec(enc_act, max_decode=max_decode, gold=feat_subgoal['lang_instr'], state_0=last_dec_state, 
-        validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
+        res, curr_dec_state = self.dec(
+            enc=enc_act,
+            max_decode=max_decode,
+            gold=feat_subgoal['lang_instr'],
+            state_0=dec_state_0,
+            valid_object_indices= feat_subgoal['object_token_id'][:,0,:] if self.aux_loss_over_object_states else None, 
+            validate_teacher_forcing=validate_teacher_forcing, 
+            validate_sample_output=validate_sample_output,
+            )
 
         return res, curr_enc_state, curr_dec_state
 
@@ -348,15 +353,17 @@ class Module(Base):
         batch_num_subgoals = len(feat['action_low'])
         batch_size = feat['action_low'][0].shape[0]
 
-        enc_state, dec_state = None, None
         for subgoal_i in range(batch_num_subgoals):
-            feat_subgoal = {k:v[subgoal_i] for k,v in feat}
-            res_subgoal, enc_state, dec_state = self.forward_one_subgoal(   feat_subgoal, enc_state, dec_state,
-                                                                            max_decode=max_decode, 
-                                                                            validate_teacher_forcing=validate_teacher_forcing, 
-                                                                            validate_sample_output=validate_sample_output)
+            feat_subgoal = {k:v[subgoal_i] for k,v in feat.items()}
+            # dict, ((B, 2*args.dhid), (B, 2*args.dhid)), 
+            res_subgoal, enc_state, dec_state = self.forward_one_subgoal(
+                feat_subgoal=feat_subgoal,
+                max_decode=max_decode,
+                validate_teacher_forcing=validate_teacher_forcing,
+                validate_sample_output=validate_sample_output)
             for k in res_subgoal.keys():
                 feat[k][subgoal_i] = res_subgoal[k]
+
         return feat
     
     # def reset(self):
@@ -397,14 +404,23 @@ class Module(Base):
     #     feat['out_word_low'] = out_word_low.unsqueeze(0)
     #     return feat
 
+    @torch.no_grad()
     def extract_preds(self, out, batch, feat, clean_special_tokens=True):
         '''
         output processing
         '''
         # batch -- list of loaded tasks 
-        # feat['out_lang_instr'] -- list of length num_subgoals, each tensor shaped (B, T, vocab size)
+        # out['out_lang_instr'] -- list of length num_subgoals, each tensor shaped (B, T, vocab size)
+
+        get_non_zero_elements = lambda t: t[t.nonzero()].squeeze(1)
+
         pred = defaultdict(lambda : defaultdict(lambda : defaultdict(str)))
-        for subgoal_i, lang_instr_pred in enumerate(feat['out_lang_instr']):
+        max_num_subgoals = len(out['out_lang_instr'].keys())
+        for subgoal_i in range(max_num_subgoals):
+
+            # Langugage
+            # shape (B, t, word vocab size)
+            lang_instr_pred = out['out_lang_instr'][subgoal_i]
             for ex, lang_instr in zip(batch, lang_instr_pred.max(2)[1].tolist()):
                 # remove padding tokens
                 if self.pad in lang_instr:
@@ -412,8 +428,8 @@ class Module(Base):
                     lang_instr = lang_instr[:pad_start_idx]
                 
                 if clean_special_tokens:
-                    if self.stop_token in lang_instr:
-                        stop_start_idx = lang_instr.index(self.stop_token)
+                    if self.word_stop_token in lang_instr:
+                        stop_start_idx = lang_instr.index(self.word_stop_token)
                         lang_instr = lang_instr[:stop_start_idx]
 
                 # index to word tokens
@@ -421,6 +437,40 @@ class Module(Base):
 
                 task_id_ann = self.get_task_and_ann_id(ex)
                 pred[task_id_ann]['lang_instr'][subgoal_i] = ' '.join(words)
+
+            # Aux Loss
+            if self.aux_loss_over_object_states:
+                # (B, object vocab size)
+                obj_vis_pred = out['out_obj_vis_score'][subgoal_i]
+                obj_state_change_pred = out['out_state_change_score'][subgoal_i]
+
+                # (B, max_num_objects of batch)
+                obj_valid_indices_out = out['valid_object_indices'][subgoal_i]
+                # (B, max_num_objects of batch)
+                obj_valid_indices_feat = feat['object_token_id'][subgoal_i][:,0,:]
+                assert torch.all(obj_valid_indices_out.eq(obj_valid_indices_feat))
+
+                # (B, t, max_num_objects of batch)
+                obj_vis_gold = feat['object_visibility'][subgoal_i]
+                obj_state_change_gold = feat['object_state_change'][subgoal_i]
+                # (B, ) last time step for each task in this subgoal
+                action_low_seq_lengths = feat['action_low_seq_lengths'][subgoal_i] - 1
+
+                for ex, valid_ixs, last_t, p_vis, p_sc, g_vis, g_sc in zip(
+                    batch, obj_valid_indices_out, action_low_seq_lengths,
+                    obj_vis_pred, obj_state_change_pred,
+                    obj_vis_gold, obj_state_change_gold):
+
+                    task_id_ann = self.get_task_and_ann_id(ex)
+                    # (num_objects in task,)
+                    valid_ixs = get_non_zero_elements(valid_ixs)
+                    pred[task_id_ann]['p_obj_vis'][subgoal_i] = F.sigmoid(p_vis[valid_ixs])
+                    pred[task_id_ann]['p_state_change'][subgoal_i] = F.sigmoid(p_sc[valid_ixs])
+                    # (num_objects in task,)
+                    pred[task_id_ann]['l_obj_vis'][subgoal_i] = g_vis[last_t,:][:valid_ixs.shape[0]]
+                    pred[task_id_ann]['l_state_change'][subgoal_i] = g_sc[last_t,:][:valid_ixs.shape[0]]
+
+                    assert torch.sum(g_vis[last_t,:][valid_ixs.shape[0]:]) == 0 and torch.sum(g_sc[last_t,:][valid_ixs.shape[0]:]) == 0
 
         # passed to compute_metric eventually
         return pred
@@ -435,63 +485,116 @@ class Module(Base):
         # point back to self.emb_word
         lang_emb = self.dec.emb(lang_num).unsqueeze(0)
         return lang_emb
-    
+
+    def compute_lang_instr_loss(self, p_lang_instr, l_lang_instr):
+        '''
+        compute language CE loss for language instr
+        p_lang_instr: shape (B, t_gold, Vocab Size). Please trun predicted language length to gold language length first.
+        l_lang_instr: shape (B, t_gold)
+        '''
+        # scalar, number of valid tasks in this subgoal.
+        num_valid_tasks = torch.sum(torch.sum((l_lang_instr != self.pad), dim=1) > 0).float()
+        # shape (B*t_gold, Vocab size)
+        p_lang_instr = p_lang_instr.reshape(-1, len(self.vocab['word']))
+        # shape (B*t_gold)
+        l_lang_instr = l_lang_instr.view(-1)
+        # scalar, from taking mean
+        loss = self.language_crtierion(input=p_lang_instr, target=l_lang_instr)
+
+        # scalar, scalar
+        return loss, num_valid_tasks
+
+    def compute_aux_loss(self, valid_object_indices, predicted_scores, targets):
+        '''
+        compute Aux loss for object visibility or state change
+        valid_object_indices: shape (B, max num objects in batch)
+        predicted_scores: shape (B, V)
+        targets: shape (B, max num objects in batch)
+        '''
+        
+        device = torch.device('cuda') if self.args.gpu else torch.device('cpu')
+        assert valid_object_indices.shape == targets.shape
+
+        # scalar, number of valid tasks in this subgoal.
+        num_valid_tasks = torch.sum(torch.sum(valid_object_indices, dim=1) > 0).float()
+
+        # (B, V), expand labels to matching shape
+        labels_full = torch.zeros_like(predicted_scores, dtype=torch.float, device=device)
+        valids_full = torch.zeros_like(predicted_scores, dtype=torch.float, device=device)
+        
+        for batch_i in range(valid_object_indices.shape[0]):
+            for object_j in range(valid_object_indices.shape[1]):
+                labels_full[batch_i, valid_object_indices[batch_i, object_j]] = targets[batch_i, object_j]
+                valids_full[batch_i, valid_object_indices[batch_i, object_j]] = valid_object_indices[batch_i, object_j] > 0
+
+        # (B, V)
+        loss_full = self.aux_criterion(input=predicted_scores, target=labels_full)
+        loss_full *= valids_full
+        # (B, )
+        loss_per_task = torch.div(torch.sum(loss_full, dim=1), torch.max(torch.sum(valids_full, dim=1), torch.tensor([1], dtype=torch.float, device=device)))
+
+        # scalar, scalar
+        return torch.sum(loss_per_task), num_valid_tasks
+
     def compute_loss(self, out, batch, feat):
         '''
         loss function for Seq2Seq agent
         '''
         device = torch.device('cuda') if self.args.gpu else torch.device('cpu')
-
         losses = dict()
-        batch_size, num_subgoals = feat['action_low'][0].shape[0], len(feat['action_low'])
-        # shape (B, num_subgoals)
-        all_subgoals_per_task_loss = torch.empty(batch_size, num_subgoals, device=device, dtype=torch.float)
-        # shape (B, num_subgoals)
-        all_subgoals_non_empty = torch.empty(batch_size, num_subgoals, device=device, dtype=torch.float)
+        batch_size, max_num_subgoals = feat['action_low'][0].shape[0], len(feat['action_low'])
 
-        num_subgoals = len(feat['lang_instr'])
-        for subgoal_i in range(num_subgoals):
-            # GT and predictions
-            if self.training:
-                # (B*T, Vocab Size), raw unormalized scores
-                p_lang_instr = out['out_lang_instr'][subgoal_i].view(-1, len(self.vocab['word']))
-            else:
-                # Trim prediction to match sequence lengths first
-                gold_lang_instr_length = feat['lang_instr'][subgoal_i].shape[1]
-                p_lang_instr = out['out_lang_instr'][subgoal_i][:, :gold_lang_instr_length, :].reshape(-1, len(self.vocab['word']))
-            l_lang_instr = feat['lang_instr'][subgoal_i].view(-1)
+        # Language Instr Loss
+        # shape (max_num_subgoals, )
+        loss_per_subgoal = torch.empty(max_num_subgoals, device=device, dtype=torch.float)
+        tasks_per_subgoal = torch.empty(max_num_subgoals, device=device, dtype=torch.float)
+        for subgoal_i in range(max_num_subgoals):
+            # get groundtruth and predictions
+            # (B,), trim prediction to match sequence lengths first
+            gold_lang_instr_length = feat['lang_instr'][subgoal_i].shape[1]
+            # (B, t_gold, Vocab Size)
+            p_lang_instr = out['out_lang_instr'][subgoal_i][:, :gold_lang_instr_length, :]
+            # (B, t_gold)
+            l_lang_instr = feat['lang_instr'][subgoal_i]
+            # compute loss and number of valid tasks in the subgoal
+            loss_per_subgoal[subgoal_i], tasks_per_subgoal[subgoal_i] = \
+                self.compute_lang_instr_loss(p_lang_instr, l_lang_instr)
 
-            # language instruction loss
-            # tenosr shape (B, t), whether token is valid word
-            pad_valid = (l_lang_instr != self.pad).float()
-            # tensor shape (B, ), how many tokens are valid words
-            num_valid = torch.sum(pad_valid, dim=1)
-            # tensor shape (B, ), whether subgoal has any valid words
-            bool_valid = (num_valid > 0).float()
-            all_subgoals_non_empty[:, subgoal_i] = bool_valid
-            # tenosr shape (B, t)
-            lang_instr_loss = F.cross_entropy(p_lang_instr, l_lang_instr, reduction='none')
-            # tenosr shape (B, t)
-            lang_instr_loss *= pad_valid
-            # Average across all timesteps in a subgoal, per task
-            # tensor shape (B, )
-            all_subgoals_per_task_loss[:, subgoal_i] = torch.div(torch.sum(lang_instr_loss, dim=1), num_valid) * bool_valid
-
-        # Average across all subgoals, per task
-        # tensor shape (B, ), how many subgoals are valid in a task
-        subgoals_valid = torch.sum(all_subgoals_non_empty, dim=1)
-        # no task should have less than 2 subgoals (including <<np-op>>)
-        assert torch.sum(subgoals_valid < 2) == 0
-        # tensor shape (B, )
-        all_subgoals_per_task_loss = torch.div(torch.sum(all_subgoals_per_task_loss, dim=1), subgoals_valid)
-        # Average across all tasks
-        lang_instr_loss = all_subgoals_per_task_loss.mean()
-
-        losses['lang_instr'] = lang_instr_loss
+        # shape (max_num_subgoals, ), weighted loss across subgoals
+        lang_instr_loss = torch.sum(loss_per_subgoal.mul(tasks_per_subgoal))/torch.sum(tasks_per_subgoal)
+        losses['lang_instr_ce_loss'] = lang_instr_loss
         perplexity = 2**lang_instr_loss
 
-        return losses, perplexity
+        # Object Visibility and State Change Aux Loss
+        if self.aux_loss_over_object_states:
+            # shape (max_num_subgoals, )
+            vis_loss_per_subgoal = torch.empty(max_num_subgoals, device=device, dtype=torch.float)
+            state_change_loss_per_subgoal = torch.empty(max_num_subgoals, device=device, dtype=torch.float)
+            tasks_per_subgoal_aux_loss = torch.empty(max_num_subgoals, device=device, dtype=torch.float)
+            for subgoal_i in range(max_num_subgoals):
 
+                # (B, ) last time step for each task in this subgoal
+                action_low_seq_lengths = feat['action_low_seq_lengths'][subgoal_i] - 1
+
+                vis_loss_per_subgoal[subgoal_i], tasks_per_subgoal_vis = self.compute_aux_loss(
+                    valid_object_indices=feat['object_token_id'][subgoal_i][:,0,:],
+                    predicted_scores=out['out_obj_vis_score'][subgoal_i],
+                    targets=feat['object_visibility'][subgoal_i][torch.arange(batch_size),action_low_seq_lengths,:]
+                    )
+                state_change_loss_per_subgoal[subgoal_i], tasks_per_subgoal_state_change = self.compute_aux_loss(
+                    valid_object_indices=feat['object_token_id'][subgoal_i][:,0,:],
+                    predicted_scores=out['out_state_change_score'][subgoal_i],
+                    targets=feat['object_state_change'][subgoal_i][torch.arange(batch_size),action_low_seq_lengths,:]
+                    )
+                assert torch.all(tasks_per_subgoal_vis.eq(tasks_per_subgoal_state_change))
+                tasks_per_subgoal_aux_loss[subgoal_i] = tasks_per_subgoal_vis
+            losses['obj_vis_bce_loss'] = torch.div(torch.sum(vis_loss_per_subgoal), torch.sum(tasks_per_subgoal_aux_loss))
+            losses['obj_state_change_bce_loss'] = torch.div(torch.sum(state_change_loss_per_subgoal), torch.sum(tasks_per_subgoal_aux_loss))
+            assert torch.all(tasks_per_subgoal.eq(tasks_per_subgoal_aux_loss))
+
+        return losses, perplexity        
+
+    @torch.no_grad()
     def compute_metric(self, preds, data):
         '''
         compute BLEU score for output
@@ -500,26 +603,42 @@ class Module(Base):
         # how does this work during training with teacher forcing !?
         m = collections.defaultdict(list)
 
-        flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
+        flatten_isntr = lambda sent: [word.strip() for word in sent]
 
         all_pred_id_ann = list(preds.keys())
         for task in data:
+            
+            # BLEU
             # find matching prediction
             pred_id_ann = '{}_{}'.format(task['task'].split('/')[1], task['repeat_idx'])
             # grab task data for ann_0, ann_1 and ann_2
             exs = self.load_task_jsons(task)
             # make sure all human annotations have same number of subgoals
             assert len(set([len(ex['ann']['instr']) for ex in exs])) == 1
+
             # compute metric for each subgoal
-            num_subgoals = len(exs[0]['ann']['instr'])
+            num_subgoals = len(exs[0]['ann']['instr']) - 1
             bleu_all_subgoals = []
             for subgoal_i in range(num_subgoals):
                 # a list of 3 lists of word tokens. (1 for each human annotation, so total 3)
-                ref_lang_instrs = [ex['ann']['instr'][subgoal_i] for ex in exs] 
+                ref_lang_instrs = [flatten_isntr(ex['ann']['instr'][subgoal_i]) for ex in exs]
                 # compute bleu score for subgoal
                 bleu_all_subgoals.append(sentence_bleu(ref_lang_instrs, preds[pred_id_ann]['lang_instr'][subgoal_i].split(' ')))
+
             # average bleu score across all subgoals
             m['BLEU'].append(sum(bleu_all_subgoals)/num_subgoals)
+
+            # Accuracy
+            if self.aux_loss_over_object_states:
+                for subgoal_i in range(num_subgoals):
+                    # accuracy for object visibility
+                    acc_vis = ((preds[pred_id_ann]['p_obj_vis'][subgoal_i] > 0.5).float() == preds[pred_id_ann]['l_obj_vis'][subgoal_i]).tolist()
+                    # accuracy for object state change
+                    acc_stc = ((preds[pred_id_ann]['p_state_change'][subgoal_i] > 0.5).float() == preds[pred_id_ann]['l_state_change'][subgoal_i]).tolist()
+
+            m['ACC_VIS'].extend(acc_vis)
+            m['ACC_STC'].extend(acc_stc)
+
             all_pred_id_ann.remove(pred_id_ann)
 
         assert len(all_pred_id_ann) == 0

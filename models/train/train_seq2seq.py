@@ -19,7 +19,7 @@ if __name__ == '__main__':
     # settings
     parser.add_argument('--seed', help='random seed', default=123, type=int)
     parser.add_argument('--data', help='dataset folder', default='data/json_feat_2.1.0')
-    parser.add_argument('--splits', help='json file containing train/dev/test splits', default='data/splits/apr13.json')
+    parser.add_argument('--splits', help='json file containing train/dev/test splits', default='data/splits/may17.json')
     parser.add_argument('--preprocess', help='store preprocessed data to json files', action='store_true')
     parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
     parser.add_argument('--save_every_epoch', help='save model after every epoch (warning: consumes a lot of space)', action='store_true')
@@ -41,6 +41,10 @@ if __name__ == '__main__':
     parser.add_argument('--action_loss_wt', help='weight of action loss', default=1., type=float)
     parser.add_argument('--subgoal_aux_loss_wt', help='weight of subgoal completion predictor', default=0., type=float)
     parser.add_argument('--pm_aux_loss_wt', help='weight of progress monitor', default=0., type=float)
+
+    # architecture ablations
+    parser.add_argument('--maxpool_over_object_states', help='Encoder side max pool object states as input', action='store_true')
+    parser.add_argument('--aux_loss_over_object_states', help='Decoder side object states auxiliary loss', action='store_true')
 
     # dropouts
     parser.add_argument('--zero_goal', help='zero out goal language', action='store_true')
@@ -91,6 +95,9 @@ if __name__ == '__main__':
     else:
         vocab = torch.load(os.path.join(args.data, "%s.vocab" % args.pp_folder))
 
+    # TODO hacky -- incorporate into preprocessing
+    object_vocab = torch.load(os.path.join(args.data, '%s.vocab' % 'objects'))
+
     # load model
     M = import_module('model.{}'.format(args.model))
     if args.resume:
@@ -101,7 +108,7 @@ if __name__ == '__main__':
             print('Checkpoint already finished {}/{} epochs.'.format(start_epoch, args.epoch))
             sys.exit(0)
     else:
-        model = M.Module(args, vocab)
+        model = M.Module(args, vocab, object_vocab)
         optimizer = None
         start_epoch = 0
 

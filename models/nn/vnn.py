@@ -32,11 +32,21 @@ class DotAttn(nn.Module):
     '''
 
     def forward(self, inp, h):
+        '''
+        inp: shape (B, t, 2*args.dhid)
+        h: (B, args.2*dhid)
+        '''
+        # (B, t, 1)
         score = self.softmax(inp, h)
+        # (B, t, 2*args.dhid) element multiply (B, t, 2*args.dhid) = (B, t, 2*args.dhid)
+        # sum(B, t, 2*args.dhid, dim=1) = (B, 2*args.dhid, dim=1)
+        # (B, 2*args.dhid, dim=1), (B, t, 1)
         return score.expand_as(inp).mul(inp).sum(1), score
 
     def softmax(self, inp, h):
+        # (B, t, 2*args.dhid) mm (B, args.2*dhid, 1) = (B, t, 1)
         raw_score = inp.bmm(h.unsqueeze(2))
+        # (B, t, 1)
         score = F.softmax(raw_score, dim=1)
         return score
 
@@ -92,11 +102,6 @@ class ActionFrameAttnEncoder(nn.Module):
         # Image Frame encoder
         self.vis_encoder = ResnetVisualEncoder(dframe=dframe)
 
-        # Image + Action encoder
-        self.encoder = nn.LSTM(self.demb+self.dframe, self.dhid, 
-                               bidirectional=self.bidirectional, 
-                               batch_first=True)
-
         # Self Attn 
         self.enc_att = SelfAttn(dhid*2)
 
@@ -121,6 +126,11 @@ class ActionFrameAttnEncoderFullSeq(ActionFrameAttnEncoder):
                  act_dropout=0., vis_dropout=0., bidirectional=True):
         super(ActionFrameAttnEncoderFullSeq, self).__init__(emb, dframe, dhid,
                  act_dropout=act_dropout, vis_dropout=vis_dropout, bidirectional=bidirectional)
+
+        # Image + Action encoder
+        self.encoder = nn.LSTM(self.demb+self.dframe, self.dhid, 
+                               bidirectional=self.bidirectional, 
+                               batch_first=True)
 
     def forward(self, feat):
         '''
@@ -148,7 +158,7 @@ class ActionFrameAttnEncoderFullSeq(ActionFrameAttnEncoder):
         # Encode entire sequence
         # packed sequence object
         enc_act, _ = self.encoder(packed_input)
-        # (B, T, args.dhid*2)
+        # (B, T, args.dhid*2) -- *2 for birdirectional
         enc_act, _ = pad_packed_sequence(enc_act, batch_first=True)
         self.act_dropout(enc_act)
 
@@ -166,16 +176,49 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
     '''
 
     def __init__(self, emb, dframe, dhid,
-                 act_dropout=0., vis_dropout=0., bidirectional=True):
+                 act_dropout=0., vis_dropout=0., bidirectional=True, obj_emb=None, maxpool_over_object_states=False):
+
         super(ActionFrameAttnEncoderPerSubgoal, self).__init__(emb, dframe, dhid,
                  act_dropout=act_dropout, vis_dropout=vis_dropout, bidirectional=bidirectional)
 
-    def forward(self, feat_subgoal, last_subgoal_states):
+        self.maxpool_over_object_states = maxpool_over_object_states
+
+        # object embedding
+        self.obj_emb = obj_emb
+        
+        if self.maxpool_over_object_states:
+            # object embedding
+            assert self.obj_emb is not None
+            
+        # Image + Action encoder
+        # action embedding + image vector dim + obj embedding + obj embedding
+        # or action embedding + image vector dim
+        self.encoder = nn.LSTM( self.demb+self.dframe+self.dhid+self.dhid if self.maxpool_over_object_states else self.demb+self.dframe,
+                                self.dhid, 
+                                bidirectional=self.bidirectional, 
+                                batch_first=True)         
+
+    def max_pool_object_features(self, object_indices, object_boolean_features):
+        '''
+        Max pool each embedding val across objects.
+        object_indices : shape (B, t, max_num_objects in batch). each int index for object vocab.
+        object_boolean_features : shape (B, t, max_num_objects in batch). each 1/0
+        '''
+        # (B, t, max_num_objects in batch, demb)
+        obj_embeddings = self.obj_emb(object_indices)
+        # (B, t, max_num_objects in batch, demb)
+        obj_embeddings = object_boolean_features.unsqueeze(-1).expand_as(obj_embeddings).mul(obj_embeddings)
+        # (B, t, demb)
+        obj_embeddings = obj_embeddings.max(2)[0]
+
+        return obj_embeddings
+
+    def forward(self, feat_subgoal, last_subgoal_hx):
         '''
         encode low-level actions and image frames
 
         Args:
-        last_subgoal_states: tuple. (h_0, c_0) argument per nn.LSTM documentation.
+        last_subgoal_hx: tuple. (h_0, c_0) argument per nn.LSTM documentation.
         '''
         # Action Sequence
         # (B, t) with t = max(l), already padded
@@ -187,18 +230,27 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
 
         # Image Frames
         # (B, t, 512, 7, 7) with t = max(l), already padded
-        frames = self.vis_dropout(feat['frames'])
+        frames = self.vis_dropout(feat_subgoal['frames'])
         # (B, t, args.dframe)
         vis_feat = self.vis_enc_step(frames)
 
+        # Object States
+        if self.maxpool_over_object_states:
+            obj_visible = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_visibility'])
+            obj_state_change = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_state_change'])
+
         # Pack inputs together
-        # (B, t, args.demb+args.dframe)
-        inp_seq = torch.cat([emb_act, vis_feat], dim=2)
+        if self.maxpool_over_object_states:
+            # ( B, t, args.demb+args.dframe+args.demb+args.demb)
+            inp_seq = torch.cat([emb_act, vis_feat, obj_visible, obj_state_change], dim=2)
+        else:
+            # ( B, t, args.demb+args.dframe)
+            inp_seq = torch.cat([emb_act, vis_feat], dim=2)
         packed_input = pack_padded_sequence(inp_seq, seq_lengths, batch_first=True, enforce_sorted=False)
 
         # Encode entire subgoal sequence
         # packed sequence object, (h_n, c_n) tuple
-        enc_act, curr_subgoal_states = self.encoder(input=packed_input, hx=last_subgoal_states)
+        enc_act, curr_subgoal_states = self.encoder(input=packed_input, hx=last_subgoal_hx)
         # (B, t, args.dhid*2)
         enc_act, _ = pad_packed_sequence(enc_act, batch_first=True)
         self.act_dropout(enc_act)
@@ -443,7 +495,8 @@ class LanguageDecoder(nn.Module):
     '''
 
     def __init__(self, emb, dhid, attn_dropout=0., hstate_dropout=0.,
-                 word_dropout=0., input_dropout=0., train_teacher_forcing=False, train_student_forcing_prob=0.1):
+                 word_dropout=0., input_dropout=0., train_teacher_forcing=False, train_student_forcing_prob=0.1, 
+                 obj_emb=None, aux_loss_over_object_states=False):
         
         super().__init__()
         # args.demb
@@ -451,7 +504,10 @@ class LanguageDecoder(nn.Module):
 
         # embedding module for words
         self.emb = emb
+        # embedding module for objects
+        self.obj_emb = obj_emb
         # hidden layer size
+        # 2*args.dhid
         self.dhid = dhid
         # LSTM cell, unroll one time step per call
         self.cell = nn.LSTMCell(dhid+demb, dhid)
@@ -466,37 +522,51 @@ class LanguageDecoder(nn.Module):
         # dropout on word fc
         self.word_dropout = nn.Dropout(word_dropout)
         # a learned initial word embedding to speed up learning
-        self.go = nn.Parameter(torch.Tensor(demb)) # TODO replace by <start> ??
+        self.go = nn.Parameter(torch.Tensor(demb)) # TODO replace by <start>
         # word fc per time step
-        # (1024 + 100, 100)
+        # (1024 + 1024 + 100, 100)
         self.word = nn.Linear(dhid+dhid+demb, demb)
         self.train_teacher_forcing = train_teacher_forcing
         self.train_student_forcing_prob = train_student_forcing_prob
         self.h_tm1_fc = nn.Linear(dhid, dhid)
+        # Aux Loss
+        self.h_enc_fc = nn.Linear(1, 2)
+        self.aux_loss_over_object_states = aux_loss_over_object_states
 
         nn.init.uniform_(self.go, -0.1, 0.1)
 
     def step(self, enc, e_t, state_tm1):
+        '''
+        enc: (B, T, args.dhid). LSTM encoder per action output
+        e_t: (B, demb) learned <go> embedding.
+        '''
+
         # previous decoder hidden state
+        # (B, 2*args.dhid) for bidirectional
         h_tm1 = state_tm1[0]
 
         # encode action feat
+        # (B, t, 2*args.dhid) for bidirectional
         act_feat_t = enc # actions are encoded once at the start
 
         # attend over actions
+        # inputs (B, t, 2*args.dhid), (B, 2*args.dhid)
+        # output (B, 2*args.dhid, dim=1), (B, t, 1)
         weighted_act_t, act_attn_t = self.attn(self.attn_dropout(act_feat_t), self.h_tm1_fc(h_tm1))
 
         # concat weight act, and previous word embedding
+        # (B, 2*args.dhid + demb)
         inp_t = torch.cat([weighted_act_t, e_t], dim=1)
         inp_t = self.input_dropout(inp_t)
 
         # update hidden state
+        # (B, 2*args.dhid, ), (B, 2*args.dhid, )
         state_t = self.cell(inp_t, state_tm1)
         state_t = [self.hstate_dropout(x) for x in state_t]
         h_t, c_t = state_t[0], state_t[1]
 
         # decode next word
-        # (B, dhid+ dhid+demb)
+        # (B, 2*args.dhid + 2*args.dhid + demb)
         cont_t = torch.cat([h_t, inp_t], dim=1)
         # (B, demb)
         word_emb_t = self.word(self.word_dropout(cont_t))
@@ -505,18 +575,47 @@ class LanguageDecoder(nn.Module):
  
         return word_t, state_t, act_attn_t
 
-    def forward(self, enc, gold=None, max_decode=150, state_0=None, 
+    def forward(self, enc, gold=None, max_decode=50, state_0=None,  valid_object_indices=None,
                 validate_teacher_forcing=False, validate_sample_output=False):
         '''
         enc :                     (B, T, args.dhid). LSTM encoder per action output
         gold:                     (B, T). padded_sequence of word index tokens.
         max_decode:               integer. maximum timesteps - length of language instruction.
         state_0:                  tuple (cont_act, torch.zeros.like(cont_act)).
+        valid_object_indices:     (B, max_num_objects of batch)
         validate_teacher_forcing: boolean. Whether to use ground-truth to score loss and perplexity. 
                                   Student-forcing is used otherwise.
         validate_sample_output:   boolean. With student-forcing, whether to decode by sampling (1) or argmax (0).
         '''
-        
+
+        # Aux Loss---------------------------------------------------
+        # (B, 2*args.dhid)
+        h_enc_tm1 = state_0[0]
+
+        # Max pool
+        # (B, args.dhid)
+        h_enc_max_pooled = torch.max(h_enc_tm1.reshape(h_enc_tm1.shape[0], 2, -1), dim=1)[0]
+        assert h_enc_max_pooled.shape == (h_enc_tm1.shape[0], h_enc_tm1.shape[1]/2)
+
+        # Expand by linear layer
+        # (B, args.dhid, 1) -> (B, args.dhid, 2)
+        h_enc_extended = self.h_enc_fc(h_enc_max_pooled.unsqueeze(-1))
+        # (B, 2, args.dhid)
+        h_enc_extended = h_enc_extended.transpose(1, 2)
+
+        # Simple Aux Loss prediction using dot products
+        obj_visibilty_scores, obj_state_change_scores = None, None
+        if self.aux_loss_over_object_states:
+            # (B, args.dhid, V)
+            obj_m = self.obj_emb.weight.t().unsqueeze(0).repeat(h_enc_tm1.shape[0],1,1)
+            # (B, 2, args.dhid) bmm (B, args.dhid, V) = (B, 2, V)
+            aux_scores = h_enc_extended.bmm(obj_m)
+            # (B, V), (B, V)
+            obj_visibilty_scores, obj_state_change_scores = aux_scores[:,0,:], aux_scores[:,1,:]
+
+        # deal with valid object indices in compute_loss
+
+        # Language Model----------------------------------------------
         max_t = gold.size(1) if (self.training or validate_teacher_forcing) else max_decode
         batch = enc.size(0)
         # go is a learned embedding
@@ -525,11 +624,14 @@ class LanguageDecoder(nn.Module):
 
         words = []
         attn_scores = []
+
         for t in range(max_t):
-            word_t, state_t, attn_score_t = self.step(enc, e_t, state_t)
+
+            word_t, state_t, attn_score_t  = self.step(enc, e_t, state_t)
             words.append(word_t)
             attn_scores.append(attn_score_t)
 
+            # next word choice
             if self.training:
                 if self.train_teacher_forcing:
                     w_t = gold[:, t]
@@ -548,12 +650,18 @@ class LanguageDecoder(nn.Module):
                     else:
                         # argmax
                         w_t = word_t.max(1)[1]
-            e_t = self.emb(w_t)
 
+            # next word embedding
+            e_t = self.emb(w_t)
+ 
         results = {
             # shape (B, T , Vocab size)
             'out_lang_instr': torch.stack(words, dim=1),
             'out_attn_scores': torch.stack(attn_scores, dim=1),
-            'state_t': state_t
+            'state_t': state_t,
+            'out_obj_vis_score': obj_visibilty_scores,
+            'out_state_change_score': obj_state_change_scores,
+            'valid_object_indices': valid_object_indices
         }
+
         return results, state_t

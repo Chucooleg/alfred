@@ -16,11 +16,11 @@ from collections import defaultdict
 
 class Module(Base):
 
-    def __init__(self, args, vocab):
+    def __init__(self, args, vocab, object_vocab):
         '''
         Seq2Seq agent
         '''
-        super().__init__(args, vocab)
+        super().__init__(args, vocab, object_vocab)
 
         # encoder and self-attention
         encoder = vnn.ActionFrameAttnEncoderFullSeq
@@ -236,8 +236,8 @@ class Module(Base):
                 lang_instr = lang_instr[:pad_start_idx]
 
             if clean_special_tokens:
-                if self.stop_token in lang_instr:
-                    stop_start_idx = lang_instr.index(self.stop_token)
+                if self.word_stop_token in lang_instr:
+                    stop_start_idx = lang_instr.index(self.word_stop_token)
                     lang_instr = lang_instr[:stop_start_idx]
 
             # index to word tokens

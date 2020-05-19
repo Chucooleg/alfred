@@ -13,7 +13,7 @@ from tqdm import trange
 
 class Module(nn.Module):
 
-    def __init__(self, args, vocab):
+    def __init__(self, args, vocab, object_vocab):
         '''
         Base Seq2Seq agent with common train and val loops
         '''
@@ -26,13 +26,15 @@ class Module(nn.Module):
         # args and vocab
         self.args = args
         self.vocab = vocab
+        self.object_vocab = object_vocab
 
         # emb modules
         self.emb_word = nn.Embedding(len(vocab['word']), args.demb)
         self.emb_action_low = nn.Embedding(len(vocab['action_low']), args.demb)
+        self.emb_object = nn.Embedding(len(object_vocab['object_type']), args.dhid, padding_idx=0)
 
-        # end tokens TODO need to replace with stop token of language
-        self.stop_token = self.vocab['word'].word2index("<<stop>>", train=False)
+        self.word_stop_token = self.vocab['word'].word2index("<<stop>>", train=False)
+        self.action_stop_token = self.vocab['action_low'].word2index("<<stop>>", train=False)
         # self.seg_token = self.vocab['action_low'].word2index("<<seg>>", train=False)  # obsolete?
 
         # set random seed (Note: this is not the seed used to initialize THOR object locations)
@@ -40,6 +42,13 @@ class Module(nn.Module):
 
         # initialize summary writer for tensorboardX
         self.summary_writer = SummaryWriter(log_dir=args.dout)
+
+    def log_metrics(self, metrics, split_name, prefix, suffix, ix):
+        '''
+        log metrics such as BLEU and accuracy to tensorboard
+        '''
+        for k in metrics.keys():
+            self.summary_writer.add_scalar('{}/{}_{}_{}'.format(split_name, prefix, k, suffix), metrics[k], ix)
 
     def run_train(self, splits, args=None, optimizer=None, start_epoch=0):
         '''
@@ -171,17 +180,20 @@ class Module(nn.Module):
             # compute metrics for train_sanity, student forcing, argmax
             p_train_sanity, train_sanity_iter, _, m_train_sanity_student = self.run_pred(train_sanity, args=args, name='train_sanity', iter=train_sanity_iter)
             m_train_sanity_student.update(self.compute_metric(p_train_sanity, train_sanity))
-            self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing', m_train_sanity_student['BLEU'], epoch)
+            self.log_metrics(m_train_sanity_student, 'train_sanity', 'epoch', 'student_forcing', epoch)
+            # self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing', m_train_sanity_student['BLEU'], epoch)
 
             # compute metrics for valid_seen, student forcing, argmax
             p_valid_seen, valid_seen_iter, _, m_valid_seen_student = self.run_pred(valid_seen, args=args, name='valid_seen', iter=valid_seen_iter)
             m_valid_seen_student.update(self.compute_metric(p_valid_seen, valid_seen))
-            self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing', m_valid_seen_student['BLEU'], epoch)
+            self.log_metrics(m_valid_seen_student, 'valid_seen', 'epoch', 'student_forcing', epoch)
+            # self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing', m_valid_seen_student['BLEU'], epoch)
 
             # compute metrics for valid_unseen, student forcing, argmax
             p_valid_unseen, valid_unseen_iter, _, m_valid_unseen_student = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=valid_unseen_iter)
             m_valid_unseen_student.update(self.compute_metric(p_valid_unseen, valid_unseen))
-            self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing', m_valid_unseen_student['BLEU'], epoch)
+            self.log_metrics(m_valid_unseen_student, 'valid_unseen', 'epoch', 'student_forcing', epoch)
+            # self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing', m_valid_unseen_student['BLEU'], epoch)
 
             #-------------------------------------------------------
             m_train_sanity, m_valid_seen, m_valid_unseen = {}, {}, {}
@@ -400,33 +412,39 @@ class Module(nn.Module):
         # compute metrics for train_sanity, student-forcing, argmax
         p_train_sanity_argmax, _, _, m_train_sanity_student_argmax = self.run_pred(train_sanity, args=args, name='train_sanity', iter=0)
         m_train_sanity_student_argmax.update(self.compute_metric(p_train_sanity_argmax, train_sanity))
-        self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing_argmax', m_train_sanity_student_argmax['BLEU'], epoch)
+        self.log_metrics(m_train_sanity_student_argmax, 'train_sanity', 'epoch', 'student_forcing_argmax', epoch)
+        # self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing_argmax', m_train_sanity_student_argmax['BLEU'], epoch)
              
         # compute metrics for valid_seen, student-forcing, argmax
         p_valid_seen_argmax, _, _, m_valid_seen_student_argmax = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0)
         m_valid_seen_student_argmax.update(self.compute_metric(p_valid_seen_argmax, valid_seen))
-        self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing_argmax', m_valid_seen_student_argmax['BLEU'], epoch)
+        self.log_metrics(m_valid_seen_student_argmax, 'valid_seen', 'epoch', 'student_forcing_argmax', epoch)      
+        # self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing_argmax', m_valid_seen_student_argmax['BLEU'], epoch)
 
         # compute metrics for valid_unseen, student-forcing, argmax
         p_valid_unseen_argmax, _, _, m_valid_unseen_student_argmax = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0)
         m_valid_unseen_student_argmax.update(self.compute_metric(p_valid_unseen_argmax, valid_unseen))
-        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing_argmax', m_valid_unseen_student_argmax['BLEU'], epoch)
+        self.log_metrics(m_valid_unseen_student_argmax, 'valid_unseen', 'epoch', 'student_forcing_argmax', epoch)      
+        # self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing_argmax', m_valid_unseen_student_argmax['BLEU'], epoch)
 
         #-------------------------------------------------------
         # compute metrics for train_sanity, student-forcing, sampled
         p_train_sanity_sampled, _, _, m_train_sanity_student_sampled = self.run_pred(train_sanity, args=args, name='train_sanity', iter=0, validate_sample_output=True)
         m_train_sanity_student_sampled.update(self.compute_metric(p_train_sanity_sampled, train_sanity))
-        self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing_sampled', m_train_sanity_student_sampled['BLEU'], epoch)
+        self.log_metrics(m_train_sanity_student_sampled, 'train_sanity', 'epoch', 'student_forcing_sampled', epoch)
+        # self.summary_writer.add_scalar('train_sanity/epoch_BLEU_student_forcing_sampled', m_train_sanity_student_sampled['BLEU'], epoch)
              
         # compute metrics for valid_seen, student-forcing, sampled
         p_valid_seen_sampled, _, _, m_valid_seen_student_sampled = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0, validate_sample_output=True)
         m_valid_seen_student_sampled.update(self.compute_metric(p_valid_seen_sampled, valid_seen))
-        self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing_sampled', m_valid_seen_student_sampled['BLEU'], epoch)
+        self.log_metrics(m_valid_seen_student_sampled, 'valid_seen', 'epoch', 'student_forcing_sampled', epoch)
+        # self.summary_writer.add_scalar('valid_seen/epoch_BLEU_student_forcing_sampled', m_valid_seen_student_sampled['BLEU'], epoch)
 
         # compute metrics for valid_unseen, student-forcing, sampled
         p_valid_unseen_sampled, _, _, m_valid_unseen_student_sampled = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0, validate_sample_output=True)
         m_valid_unseen_student_sampled.update(self.compute_metric(p_valid_unseen_sampled, valid_unseen))
-        self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing_sampled', m_valid_unseen_student_sampled['BLEU'], epoch)
+        self.log_metrics(m_valid_unseen_student_sampled, 'valid_unseen', 'epoch', 'student_forcing_sampled', epoch)
+        # self.summary_writer.add_scalar('valid_unseen/epoch_BLEU_student_forcing_sampled', m_valid_unseen_student_sampled['BLEU'], epoch)
 
         #-------------------------------------------------------
         m_train_sanity, m_valid_seen, m_valid_unseen = {}, {}, {}
