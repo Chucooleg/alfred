@@ -607,12 +607,24 @@ class Module(Base):
 
         return losses, perplexity        
 
+    def classify_preds(self, pred, gt, thresh=0.5):
+        '''
+        pred : shape (num objects in the task,)
+        gt   : shape (num objects in the task,)
+        '''
+        pred_bool = (pred > 0.5).numpy()
+        gt = gt.numpy()
+        acc = pred_bool == gt
+        tp = pred_bool * gt
+        fp = pred_bool * (gt == 0)
+        fn = (pred_bool == 0) * gt
+        return acc, tp, fp, fn
+
     @torch.no_grad()
     def compute_metric(self, preds, data):
         '''
         compute BLEU score for output
         '''
-
         # how does this work during training with teacher forcing !?
         m = collections.defaultdict(list)
 
@@ -641,18 +653,41 @@ class Module(Base):
             # average bleu score across all subgoals
             m['BLEU'].append(sum(bleu_all_subgoals)/num_subgoals)
 
-            # Accuracy
+            # AUX LOSS
             if self.aux_loss_over_object_states:
+                TP_VIS_ALL = []
+                TP_STC_ALL = []
+                FP_VIS_ALL = []
+                FP_STC_ALL = []
+                FN_VIS_ALL = []
+                FN_STC_ALL = []
                 for subgoal_i in range(num_subgoals):
-                    # accuracy for object visibility
-                    acc_vis = ((preds[pred_id_ann]['p_obj_vis'][subgoal_i] > 0.5).float() == preds[pred_id_ann]['l_obj_vis'][subgoal_i]).tolist()
-                    # accuracy for object state change
-                    acc_stc = ((preds[pred_id_ann]['p_state_change'][subgoal_i] > 0.5).float() == preds[pred_id_ann]['l_state_change'][subgoal_i]).tolist()
+                    pred_vis = preds[pred_id_ann]['p_obj_vis'][subgoal_i]
+                    gt_vis = preds[pred_id_ann]['l_obj_vis'][subgoal_i]
+                    pred_stc = preds[pred_id_ann]['p_state_change'][subgoal_i]
+                    gt_stc = preds[pred_id_ann]['l_obj_vis'][subgoal_i]
+                    # Accuracy, TP, FP, FN
+                    # each array (num objects in task)
+                    acc_vis, tp_vis, fp_vis, fn_vis = self.classify_preds(pred_vis, gt_vis)
+                    acc_stc, tp_stc, fp_stc, fn_stc = self.classify_preds(pred_stc, gt_stc)
 
-                m['ACC_VIS'].extend(acc_vis)
-                m['ACC_STC'].extend(acc_stc)
+                    m['ACC_VIS'].extend(acc_vis)
+                    m['ACC_STC'].extend(acc_stc)
+                    TP_VIS_ALL.extend(tp_vis)
+                    TP_STC_ALL.extend(tp_stc)
+                    FP_VIS_ALL.extend(fp_vis)
+                    FP_STC_ALL.extend(fp_stc)
+                    FN_VIS_ALL.extend(fn_vis)
+                    FN_STC_ALL.extend(fn_stc)
 
             all_pred_id_ann.remove(pred_id_ann)
 
         assert len(all_pred_id_ann) == 0
-        return {k: sum(v)/len(v) for k, v in m.items()}
+        m_out = {k: sum(v)/len(v) for k, v in m.items()}
+        if self.aux_loss_over_object_states:
+            m_out['PRECISION_VIS'] = sum(TP_VIS_ALL) / (sum(TP_VIS_ALL) + sum(FP_VIS_ALL))
+            m_out['RECALL_VIS'] = sum(TP_VIS_ALL) / (sum(TP_VIS_ALL) + sum(FN_VIS_ALL))
+            m_out['PRECISION_STC'] = sum(TP_STC_ALL) / (sum(TP_STC_ALL) + sum(FP_STC_ALL))
+            m_out['RECALL_STC'] = sum(TP_STC_ALL) / (sum(TP_STC_ALL) + sum(FN_STC_ALL))
+
+        return m_out
