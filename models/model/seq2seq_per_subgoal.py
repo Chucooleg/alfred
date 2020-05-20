@@ -690,4 +690,9 @@ class Module(Base):
             m_out['PRECISION_STC'] = sum(TP_STC_ALL) / (sum(TP_STC_ALL) + sum(FP_STC_ALL))
             m_out['RECALL_STC'] = sum(TP_STC_ALL) / (sum(TP_STC_ALL) + sum(FN_STC_ALL))
 
+            m_out['TOTAL_GT_STC'] = sum(TP_STC_ALL) + sum(FN_STC_ALL)
+            m_out['TOTAL_PRED_STC'] = sum(TP_STC_ALL) + sum(FP_STC_ALL)
+            m_out['TOTAL_GT_VIS'] = sum(TP_VIS_ALL) + sum(FN_VIS_ALL)
+            m_out['TOTAL_PRED_VIS'] = sum(TP_VIS_ALL) + sum(FP_VIS_ALL)
+
         return m_out
