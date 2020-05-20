@@ -85,7 +85,7 @@ class ActionFrameAttnEncoder(nn.Module):
     '''
 
     def __init__(self, emb, dframe, dhid,
-                 act_dropout=0., vis_dropout=0., bidirectional=True):
+                 act_dropout=0., vis_dropout=0., bidirectional=True, gpu=False):
         super(ActionFrameAttnEncoder, self).__init__()
 
         # Embedding matrix for Actions
@@ -176,27 +176,244 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
     '''
 
     def __init__(self, emb, dframe, dhid,
-                 act_dropout=0., vis_dropout=0., bidirectional=True, obj_emb=None, maxpool_over_object_states=False):
+                act_dropout=0., vis_dropout=0., input_dropout=0., hstate_dropout=0., attn_dropout=0., bidirectional=True, obj_emb=None):
 
         super(ActionFrameAttnEncoderPerSubgoal, self).__init__(emb, dframe, dhid,
                  act_dropout=act_dropout, vis_dropout=vis_dropout, bidirectional=bidirectional)
-
-        self.maxpool_over_object_states = maxpool_over_object_states
-
-        # object embedding
-        self.obj_emb = obj_emb
-        
-        if self.maxpool_over_object_states:
-            # object embedding
-            assert self.obj_emb is not None
             
         # Image + Action encoder
         # action embedding + image vector dim + obj embedding + obj embedding
         # or action embedding + image vector dim
-        self.encoder = nn.LSTM( self.demb+self.dframe+self.dhid+self.dhid if self.maxpool_over_object_states else self.demb+self.dframe,
+        self.encoder = nn.LSTM( self.demb+self.dframe,
                                 self.dhid, 
                                 bidirectional=self.bidirectional, 
-                                batch_first=True)         
+                                batch_first=True)
+        self.input_dropout = nn.Dropout(input_dropout)
+        self.hstate_dropout = nn.Dropout(hstate_dropout)
+        self.attn_dropout = nn.Dropout(attn_dropout)
+
+    def forward(self, feat_subgoal, last_subgoal_hx):
+        '''
+        encode low-level actions and image frames
+
+        Args:
+        last_subgoal_hx: tuple. (h_0, c_0) argument per nn.LSTM documentation.
+        '''
+        # Action Sequence
+        # (B, t) with t = max(l), already padded
+        pad_seq = feat_subgoal['action_low']
+        # (B,). Each value is l for the example
+        seq_lengths = feat_subgoal['action_low_seq_lengths']
+        # (B, t, args.demb)
+        emb_act = self.emb(pad_seq)        
+
+        # Image Frames
+        # (B, t, 512, 7, 7) with t = max(l), already padded
+        frames = self.vis_dropout(feat_subgoal['frames'])
+        # (B, t, args.dframe)
+        vis_feat = self.vis_enc_step(frames)
+
+        # ( B, t, args.demb+args.dframe)
+        inp_seq = torch.cat([emb_act, vis_feat], dim=2)
+        packed_input = pack_padded_sequence(inp_seq, seq_lengths, batch_first=True, enforce_sorted=False)
+
+        # Encode entire subgoal sequence
+        # packed sequence object, (h_n, c_n) tuple
+        enc_act, curr_subgoal_states = self.encoder(input=packed_input, hx=last_subgoal_hx)
+        # (B, t, args.dhid*2)
+        enc_act, _ = pad_packed_sequence(enc_act, batch_first=True)
+        self.act_dropout(enc_act)
+
+        # Apply learned self-attention
+        # (B, args.dhid*2)
+        cont_act = self.enc_att(enc_act)
+
+        # return both compact, per-step representations, (h_n, c_n) for starting next subgoal encoding
+        return cont_act, enc_act, curr_subgoal_states 
+
+
+class ActionFrameAttnEncoderPerSubgoalObjAttn(ActionFrameAttnEncoderPerSubgoal):
+    '''
+    action and frame sequence encoder. encode one subgoal at a time. use attention over object states
+    '''
+
+    def __init__(self, emb, obj_emb, dframe, dhid,
+                 act_dropout=0., vis_dropout=0., input_dropout=0., hstate_dropout=0., attn_dropout=0., bidirectional=True):
+
+        super(ActionFrameAttnEncoderPerSubgoalObjAttn, self).__init__(emb, dframe, dhid,
+                act_dropout=act_dropout, vis_dropout=vis_dropout, input_dropout=input_dropout ,hstate_dropout=hstate_dropout, attn_dropout=attn_dropout, bidirectional=bidirectional)
+
+        # object states handling
+        # (V, dhid)
+        self.obj_emb = obj_emb
+        # dhid to dhid
+        self.obj_attn = DotAttn()
+        # linear for hidden state before attention
+        self.h_tm1_fc = nn.Linear(dhid, dhid)
+
+        # Image + Action + obj attn encoder
+        # action embedding + image vector dim + obj vis embed + obj stc embed
+        self.forward_cell = nn.LSTMCell(self.demb+self.dframe+self.dhid+self.dhid, self.dhid)
+        if bidirectional:
+            self.backward_cell = nn.LSTMCell(self.demb+self.dframe+self.dhid+self.dhid, self.dhid)
+
+    def filter_obj_embeds(self, object_indices, object_boolean_features):
+        '''
+        make continuous repr for object embeddding, visibility and state change.
+        '''
+        # (B, t, max_num_objects in batch, demb)
+        obj_embeddings = self.obj_emb(object_indices)
+        # (B, t, max_num_objects in batch, demb)
+        obj_embeddings = object_boolean_features.unsqueeze(-1).expand_as(obj_embeddings).mul(obj_embeddings)
+        return obj_embeddings
+
+    def step(self, cell, emb_act_t, vis_feat_t, obj_vis_t, obj_stc_t, state_tm1):
+        # previous decoder hidden state
+        # (B, args.dhid)
+        h_tm1 = state_tm1[0]
+
+        # inputs (B, V, args.dhid), (B, args.dhid)
+        # output (B, args.dhid), (B, t, 1)
+        weighted_obj_vis_t, obj_vis_attn_t = self.obj_attn(self.attn_dropout(obj_vis_t), self.h_tm1_fc(h_tm1))
+        weighted_obj_stc_t, obj_stc_attn_t = self.obj_attn(self.attn_dropout(obj_stc_t), self.h_tm1_fc(h_tm1))
+
+        # action embedding + image vector dim + obj vis embed + obj stc embed
+        inp_t = torch.cat([emb_act_t, vis_feat_t, weighted_obj_vis_t, weighted_obj_stc_t], dim=1)
+        inp_t = self.input_dropout(inp_t)
+
+        # update hidden state
+        # (B, args.dhid, ), (B, args.dhid, )
+        state_t = cell(inp_t, state_tm1)
+        state_t = [self.hstate_dropout(x) for x in state_t]
+        
+        return state_t, obj_vis_attn_t, obj_stc_attn_t
+
+    def encode_sequence_one_direction(self, emb_act, vis_feat, obj_vis, obj_stc, last_subgoal_hx, backward=False):
+        '''
+        encode entire sequence of inputs in a single direction
+        emb_act:   (B, t, args.demb)
+        vis_feat:  (B, t, args.dframe)
+        obj_vis:   (B, t, max_num_objects in batch, demb)
+        obj_stc:   (B, t, max_num_objects in batch, demb)
+        last_subgoal_hx: tuple. (h_0, c_0) argument per nn.LSTM documentation. This has shape =((B, args.dhid), (B, args.dhid)).
+        '''
+        assert last_subgoal_hx[0].shape == last_subgoal_hx[1].shape == (emb_act.shape[0], self.dhid)
+
+        max_t = emb_act.shape[1]
+        timesteps = range(max_t) if not backward else range(max_t)[::-1]
+        cell = self.forward_cell if not backward else self.backward_cell
+        
+        state_t = last_subgoal_hx
+        assert last_subgoal_hx[0].shape == last_subgoal_hx[1].shape == (emb_act.shape[0], self.dhid)
+
+        # (B, t, args.dhid)
+        enc_act = torch.zeros(emb_act.shape[0], max_t, self.dhid, device=emb_act.device, dtype=torch.float)
+        # obj_vis_attn_scores, obj_stc_attn_scores = [], []
+        for t in timesteps:
+            state_t, obj_vis_attn_t, obj_stc_attn_t = self.step(cell, emb_act[:,t,:], vis_feat[:,t,:], obj_vis[:,t,:], obj_stc[:,t,:], state_t)
+            enc_act[:,t,:] = state_t[0]
+        # (h_n, c_n)=((B, args.dhid), (B, args.dhid)) tuple
+        curr_subgoal_states = state_t
+        # (B, t, args.dhid), (h_n, c_n)=((B, args.dhid), (B, args.dhid)) tuple
+        return enc_act, curr_subgoal_states
+            
+    def encode_sequence(self, emb_act, vis_feat, obj_vis, obj_stc, last_subgoal_hx):
+        '''
+        encode entire sequence of inputs
+        emb_act:   (B, t, args.demb)
+        vis_feat:  (B, t, args.dframe)
+        obj_vis:   (B, t, max_num_objects in batch, demb)
+        obj_stc:   (B, t, max_num_objects in batch, demb)
+        last_subgoal_hx: tuple. (h_0, c_0) argument per nn.LSTM documentation. For bidirectional, this has shape =((B, args.dhid*2), (B, args.dhid*2)).
+        '''
+        assert emb_act.shape[1] == vis_feat.shape[1] == obj_vis.shape[1] == obj_stc.shape[1]
+
+        if not self.bidirectional:
+            # (B, t, args.dhid), (h_n, c_n) tuple
+            enc_act, curr_subgoal_states = self.encode_sequence_one_direction(emb_act, vis_feat, obj_vis, obj_stc, last_subgoal_hx)
+            # (B, t, args.dhid), (h_n, c_n)=((B, args.dhid), (B, args.dhid)) tuple
+            return enc_act, curr_subgoal_states
+        else:
+            # (B, t, args.dhid), (h_n, c_n) tuple
+            enc_act_forward, curr_subgoal_states_forward = self.encode_sequence_one_direction(emb_act, vis_feat, obj_vis, obj_stc, (last_subgoal_hx[0][:,:self.dhid], last_subgoal_hx[1][:,:self.dhid]))
+            # (B, t, args.dhid), (h_n, c_n) tuple
+            enc_act_backward, curr_subgoal_states_backward = self.encode_sequence_one_direction(emb_act, vis_feat, obj_vis, obj_stc, (last_subgoal_hx[0][:,self.dhid:], last_subgoal_hx[1][:,self.dhid:]), backward=True)
+            # (B, t, args.dhid*2)
+            enc_act = torch.cat([enc_act_forward, enc_act_backward], dim=2)
+            # ((B, args.dhid*2), (B, args.dhid*2))
+            curr_subgoal_states = (
+                torch.cat([curr_subgoal_states_forward[0], curr_subgoal_states_backward[0]], dim=1), 
+                torch.cat([curr_subgoal_states_forward[1], curr_subgoal_states_backward[1]], dim=1)
+                )
+            # (B, t, args.dhid*2), (h_n, c_n)=((B, args.dhid*2), (B, args.dhid*2)) tuple
+            return enc_act, curr_subgoal_states
+
+    def forward(self, feat_subgoal, last_subgoal_hx):
+        '''
+        encode low-level actions and image frames
+
+        Args:
+        last_subgoal_hx: tuple. (h_0, c_0) argument per nn.LSTM documentation. For bidirectional, this has shape =((B, args.dhid*2), (B, args.dhid*2)).
+        '''
+
+        # Action Sequence
+        # (B, t) with t = max(l), already padded
+        pad_seq = feat_subgoal['action_low']
+        # (B,). Each value is l for the example
+        seq_lengths = feat_subgoal['action_low_seq_lengths']
+        # (B, t, args.demb)
+        emb_act = self.emb(pad_seq)
+
+        # Image Frames
+        # (B, t, 512, 7, 7) with t = max(l), already padded
+        frames = self.vis_dropout(feat_subgoal['frames'])
+        # (B, t, args.dframe)
+        vis_feat = self.vis_enc_step(frames)
+
+        # Make object representation
+        # (B, t, max_num_objects in batch, demb), (B, t, max_num_objects in batch, demb)
+        obj_vis = self.filter_obj_embeds(feat_subgoal['object_token_id'], feat_subgoal['object_visibility'])
+        obj_stc = self.filter_obj_embeds(feat_subgoal['object_token_id'], feat_subgoal['object_state_change'])
+
+        # hidden state at timestep 0
+        if last_subgoal_hx is None:
+            h_0 = torch.zeros(emb_act.shape[0], 2*self.dhid if self.bidirectional else self.dhid, dtype=torch.float, device=pad_seq.device)
+            c_0 = torch.zeros_like(h_0)
+            last_subgoal_hx = (h_0, c_0)
+
+        # (B, t, args.dhid), (h_n, c_n) tuple
+        enc_act, curr_subgoal_states = self.encode_sequence(emb_act, vis_feat, obj_vis, obj_stc, last_subgoal_hx)
+        self.act_dropout(enc_act)
+
+        # Apply learned self-attention
+        # (B, args.dhid*2)
+        cont_act = self.enc_att(enc_act)
+        
+        # (B, args.dhid*2), (B, t, args.dhid*2), (h_n, c_n)
+        return cont_act, enc_act, curr_subgoal_states  
+
+
+class ActionFrameAttnEncoderPerSubgoalMaxPool(ActionFrameAttnEncoderPerSubgoal):
+    '''
+    action and frame sequence encoder. encode one subgoal at a time. max-pool over object states
+    '''
+
+    def __init__(self, emb, obj_emb, dframe, dhid,
+                 act_dropout=0., vis_dropout=0., input_dropout=0., hstate_dropout=0., attn_dropout=0., bidirectional=True):
+
+        super(ActionFrameAttnEncoderPerSubgoalMaxPool, self).__init__(emb, dframe, dhid,
+                act_dropout=act_dropout, vis_dropout=vis_dropout, input_dropout=input_dropout, hstate_dropout=hstate_dropout, attn_dropout=attn_dropout, bidirectional=bidirectional)
+
+        # object embedding
+        self.obj_emb = obj_emb
+            
+        # Image + Action encoder
+        # action embedding + image vector dim + obj embedding + obj embedding
+        # or action embedding + image vector dim
+        self.encoder = nn.LSTM( self.demb+self.dframe+self.dhid+self.dhid ,
+                                self.dhid, 
+                                bidirectional=self.bidirectional, 
+                                batch_first=True)       
 
     def max_pool_object_features(self, object_indices, object_boolean_features):
         '''
@@ -204,11 +421,11 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
         object_indices : shape (B, t, max_num_objects in batch). each int index for object vocab.
         object_boolean_features : shape (B, t, max_num_objects in batch). each 1/0
         '''
-        # (B, t, max_num_objects in batch, demb)
+        # (B, t, max_num_objects in batch, dhid)
         obj_embeddings = self.obj_emb(object_indices)
-        # (B, t, max_num_objects in batch, demb)
+        # (B, t, max_num_objects in batch, dhid)
         obj_embeddings = object_boolean_features.unsqueeze(-1).expand_as(obj_embeddings).mul(obj_embeddings)
-        # (B, t, demb)
+        # (B, t, dhid)
         obj_embeddings = obj_embeddings.max(2)[0]
 
         return obj_embeddings
@@ -235,17 +452,12 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
         vis_feat = self.vis_enc_step(frames)
 
         # Object States
-        if self.maxpool_over_object_states:
-            obj_visible = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_visibility'])
-            obj_state_change = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_state_change'])
+        # (B, t, dhid), (B, t, dhid)
+        obj_visible = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_visibility'])
+        obj_state_change = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_state_change'])
 
-        # Pack inputs together
-        if self.maxpool_over_object_states:
-            # ( B, t, args.demb+args.dframe+args.demb+args.demb)
-            inp_seq = torch.cat([emb_act, vis_feat, obj_visible, obj_state_change], dim=2)
-        else:
-            # ( B, t, args.demb+args.dframe)
-            inp_seq = torch.cat([emb_act, vis_feat], dim=2)
+        # ( B, t, args.demb+args.dframe+args.dhid+args.dhid)
+        inp_seq = torch.cat([emb_act, vis_feat, obj_visible, obj_state_change], dim=2)
         packed_input = pack_padded_sequence(inp_seq, seq_lengths, batch_first=True, enforce_sorted=False)
 
         # Encode entire subgoal sequence
@@ -259,8 +471,8 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
         # (B, args.dhid*2)
         cont_act = self.enc_att(enc_act)
 
-        # return both compact, per-step representations, (h_n, c_n) for starting next subgoal encoding
-        return cont_act, enc_act, curr_subgoal_states 
+        # (B, args.dhid*2), (B, t, args.dhid*2), (h_n, c_n)
+        return cont_act, enc_act, curr_subgoal_states         
 
 
 class MaskDecoder(nn.Module):
@@ -551,7 +763,7 @@ class LanguageDecoder(nn.Module):
 
         # attend over actions
         # inputs (B, t, 2*args.dhid), (B, 2*args.dhid)
-        # output (B, 2*args.dhid, dim=1), (B, t, 1)
+        # output (B, 2*args.dhid), (B, t, 1)
         weighted_act_t, act_attn_t = self.attn(self.attn_dropout(act_feat_t), self.h_tm1_fc(h_tm1))
 
         # concat weight act, and previous word embedding

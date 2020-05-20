@@ -43,8 +43,9 @@ if __name__ == '__main__':
     parser.add_argument('--pm_aux_loss_wt', help='weight of progress monitor', default=0., type=float)
 
     # architecture ablations
-    parser.add_argument('--maxpool_over_object_states', help='Encoder side max pool object states as input', action='store_true')
-    parser.add_argument('--aux_loss_over_object_states', help='Decoder side object states auxiliary loss', action='store_true')
+    parser.add_argument('--encoder_addons', type=str, default='none', choices=['none', 'max_pool_obj', 'biattn_obj'])
+    parser.add_argument('--decoder_addons', type=str, default='none', choices=['none', 'aux_loss'])
+    parser.add_argument('--object_repr', type=str, default='type', choices=['type', 'instance'])
 
     # dropouts
     parser.add_argument('--zero_goal', help='zero out goal language', action='store_true')

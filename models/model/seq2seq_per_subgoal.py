@@ -25,21 +25,31 @@ class Module(Base):
 
         self.pp_folder = args.pp_folder
 
-        self.maxpool_over_object_states = args.maxpool_over_object_states
-        self.aux_loss_over_object_states = args.aux_loss_over_object_states
+        # action sequence decoder
+        if args.encoder_addons == 'max_pool_obj':
+            encoder = vnn.ActionFrameAttnEncoderPerSubgoalMaxPool
+        elif args.encoder_addons == 'biattn_obj':
+            encoder = vnn.ActionFrameAttnEncoderPerSubgoalObjAttn
+        else: # 'none'
+            encoder = vnn.ActionFrameAttnEncoderPerSubgoal
 
-        # encoder and self-attention
-        encoder = vnn.ActionFrameAttnEncoderPerSubgoal
         self.enc = encoder( emb=self.emb_action_low,
                             obj_emb=self.emb_object,
                             dframe=args.dframe, 
                             dhid=args.dhid,
                             act_dropout=args.act_dropout,
                             vis_dropout=args.vis_dropout,
-                            bidirectional=True,
-                            maxpool_over_object_states=self.maxpool_over_object_states)
+                            input_dropout=args.input_dropout,
+                            hstate_dropout=args.hstate_dropout,
+                            attn_dropout=args.attn_dropout,
+                            bidirectional=True)   
 
         # language decoder
+        if args.decoder_addons == 'aux_loss':
+            self.aux_loss_over_object_states = True
+        else: # 'none'
+            self.aux_loss_over_object_states = False
+        
         decoder = vnn.LanguageDecoder
         self.dec = decoder( emb=self.emb_word,
                             obj_emb=self.emb_object,
@@ -90,6 +100,8 @@ class Module(Base):
         batch_size = len(batch)
         max_num_subgoals = 0
         max_num_objects = 0
+
+        # TODO try multiprocess pooling version
         for batch_i, ex in enumerate(batch):
 
             # ignore last subgoal (i.e. no-op)
@@ -320,6 +332,7 @@ class Module(Base):
         validate_teacher_forcing: Boolean. Whether to use teacher forcing when we are in validation mode.
         validate_sample_output: Boolean. Only used when validate_teacher_forcing=False. True will sample output tokens from output distribution. False will use argmax decoding.
         '''
+
         # encode entire subgoal sequence of low-level actions and frames
         # (B, args.dhid*2), (B, t, args.dhid*2), (h_n, c_n)
         cont_act, enc_act, curr_enc_state = self.enc(
@@ -636,8 +649,8 @@ class Module(Base):
                     # accuracy for object state change
                     acc_stc = ((preds[pred_id_ann]['p_state_change'][subgoal_i] > 0.5).float() == preds[pred_id_ann]['l_state_change'][subgoal_i]).tolist()
 
-            m['ACC_VIS'].extend(acc_vis)
-            m['ACC_STC'].extend(acc_stc)
+                m['ACC_VIS'].extend(acc_vis)
+                m['ACC_STC'].extend(acc_stc)
 
             all_pred_id_ann.remove(pred_id_ann)
 
