@@ -612,8 +612,8 @@ class Module(Base):
         pred : shape (num objects in the task,)
         gt   : shape (num objects in the task,)
         '''
-        pred_bool = (pred > 0.5).numpy()
-        gt = gt.numpy()
+        pred_bool = (pred > 0.5).cpu().numpy()
+        gt = gt.cpu().numpy()
         acc = pred_bool == gt
         tp = pred_bool * gt
         fp = pred_bool * (gt == 0)

@@ -222,6 +222,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
+                    'object_vacab': self.vocab,
                     'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_seen.json')
@@ -252,6 +253,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
+                    'object_vacab': self.vocab,
                     'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_unseen.json')
@@ -282,6 +284,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
+                    'object_vacab': self.vocab,
                     'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_train_sanity.json')
@@ -313,6 +316,7 @@ class Module(nn.Module):
                 'optim': optimizer.state_dict(),
                 'args': self.args,
                 'vocab': self.vocab,
+                'object_vacab': self.vocab,
                 'epoch': epoch,
             }, fsave)
             # time
@@ -641,7 +645,7 @@ class Module(nn.Module):
             args.data = '/root/data_alfred/json_feat_2.1.0'
             args.dout = retain_args.dout
 
-        model = cls(args, save['vocab'])
+        model = cls(args, save['vocab'], save['object_vocab'])
         model.load_state_dict(save['model'])
         next_epoch = int(save['epoch']) + 1
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)

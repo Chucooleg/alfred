@@ -19,7 +19,7 @@ if __name__ == '__main__':
     # settings
     parser.add_argument('--seed', help='random seed', default=123, type=int)
     parser.add_argument('--data', help='dataset folder', default='data/json_feat_2.1.0')
-    parser.add_argument('--splits', help='json file containing train/dev/test splits', default='data/splits/apr13.json')
+    parser.add_argument('--splits', help='json file containing train/dev/test splits', default='data/splits/may17.json')
     parser.add_argument('--preprocess', help='store preprocessed data to json files', action='store_true')
     parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
     parser.add_argument('--save_every_epoch', help='save model after every epoch (warning: consumes a lot of space)', action='store_true')
@@ -43,6 +43,11 @@ if __name__ == '__main__':
     parser.add_argument('--subgoal_aux_loss_wt', help='weight of subgoal completion predictor', default=0., type=float)
     parser.add_argument('--pm_aux_loss_wt', help='weight of progress monitor', default=0., type=float)
 
+    # architecture ablations
+    parser.add_argument('--encoder_addons', type=str, default='none', choices=['none', 'max_pool_obj', 'biattn_obj'])
+    parser.add_argument('--decoder_addons', type=str, default='none', choices=['none', 'aux_loss'])
+    parser.add_argument('--object_repr', type=str, default='type', choices=['type', 'instance'])
+
     # dropouts
     parser.add_argument('--zero_goal', help='zero out goal language', action='store_true')
     parser.add_argument('--zero_instr', help='zero out step-by-step instr language', action='store_true')
@@ -56,7 +61,8 @@ if __name__ == '__main__':
     parser.add_argument('--word_dropout', help='dropout rate for word fc', default=0., type=float)
 
     # other settings
-    parser.add_argument('--dec_teacher_forcing', help='use gpu', action='store_true')
+    parser.add_argument('--train_teacher_forcing', help='use gpu', action='store_true')
+    parser.add_argument('--train_student_forcing_prob', help='bernoulli probability', default=0.1, type=float)
     parser.add_argument('--temp_no_history', help='use gpu', action='store_true')
 
     # debugging
@@ -78,13 +84,11 @@ if __name__ == '__main__':
         splits = json.load(f)
         pprint.pprint({k: len(v) for k, v in splits.items()})
 
-    vocab = torch.load(os.path.join(args.data, "%s.vocab" % args.pp_folder))
-
     # load model
     M = import_module('model.{}'.format(args.model))
     
-    for epoch in range(50):
-        resume_path = '/root/data/home/hoyeung/blob_alfred_data/exp_all/model:seq2seq_nl_with_frames,name:v1_epoch_50_low_level_instrs_student_forcing/net_epoch_{}.pth'.format(epoch)
+    for epoch in range(33): # NOTE change epoch num and model location here.
+        resume_path = '/root/data/home/hoyeung/blob_alfred_data/exp_all/model:seq2seq_per_subgoal,name:v2_epoch_50_enc_max_pool_aux_loss/net_epoch_{}.pth'.format(epoch)
         print('resume path: {}'.format(resume_path))
         model, _, _ = M.Module.load(resume_path, args)
         # to gpu
