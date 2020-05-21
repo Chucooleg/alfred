@@ -217,6 +217,8 @@ class Module(Base):
                 # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
                 feat['object_state_change'][subgoal_i][batch_i] = obj_states['type_state_change'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
                 # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
+                feat['object_state_change_since_last_subgoal'][subgoal_i][batch_i] = obj_states['type_state_change_since_last_subgoal'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
+                # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
                 feat['object_visibility'][subgoal_i][batch_i] = obj_states['type_visibile'][subgoal_i] + [obj_states['type_visibile'][subgoal_i][-1]]  # include <<stop>>
                 # each is a list (timestep) of lists (num objects)
                 # [[apple idx, pear idx, ...], [apple idx, pear idx, ...], [apple idx, pear idx, ...]]
@@ -283,7 +285,7 @@ class Module(Base):
                 assert all_pad_seqs[-1].shape[0] == batch_size
                 feat[k] = all_pad_seqs
             
-            elif k in {'object_token_id', 'object_visibility', 'object_state_change'}:
+            elif k in {'object_token_id', 'object_visibility', 'object_state_change', 'object_state_change_since_last_subgoal'}:
 
                 all_pad_seqs = []
                 # shape (1, max_num_objects) -- single time step, 40 objects
@@ -429,7 +431,14 @@ class Module(Base):
 
         pred = defaultdict(lambda : defaultdict(lambda : defaultdict(str)))
         max_num_subgoals = len(out['out_lang_instr'].keys())
+
+        ct_vis_all = 0
+        ct_stc_all = 0
+
         for subgoal_i in range(max_num_subgoals):
+            
+            ct_vis = 0
+            ct_stc = 0
 
             # Langugage
             # shape (B, t, word vocab size)
@@ -465,14 +474,16 @@ class Module(Base):
 
                 # (B, t, max_num_objects of batch)
                 obj_vis_gold = feat['object_visibility'][subgoal_i]
-                obj_state_change_gold = feat['object_state_change'][subgoal_i]
-                # (B, ) last time step for each task in this subgoal
-                action_low_seq_lengths = feat['action_low_seq_lengths'][subgoal_i] - 1
+                obj_state_change_gold = feat['object_state_change_since_last_subgoal'][subgoal_i]
+                # (B, ) last time step for each task in this subgoal, exclude stop action
+                action_low_seq_lengths = feat['action_low_seq_lengths'][subgoal_i] - 2
 
                 for ex, valid_ixs, last_t, p_vis, p_sc, g_vis, g_sc in zip(
                     batch, obj_valid_indices_out, action_low_seq_lengths,
                     obj_vis_pred, obj_state_change_pred,
                     obj_vis_gold, obj_state_change_gold):
+
+                    valid_ixs = valid_ixs[valid_ixs.nonzero()].squeeze(1)
 
                     task_id_ann = self.get_task_and_ann_id(ex)
                     # (num_objects in task,)
@@ -483,7 +494,13 @@ class Module(Base):
                     pred[task_id_ann]['l_obj_vis'][subgoal_i] = g_vis[last_t,:][:valid_ixs.shape[0]]
                     pred[task_id_ann]['l_state_change'][subgoal_i] = g_sc[last_t,:][:valid_ixs.shape[0]]
 
+                    ct_vis += torch.sum(g_vis[last_t,:][:valid_ixs.shape[0]]).cpu().item()
+                    ct_stc += torch.sum(g_sc[last_t,:][:valid_ixs.shape[0]]).cpu().item()
+
                     assert torch.sum(g_vis[last_t,:][valid_ixs.shape[0]:]) == 0 and torch.sum(g_sc[last_t,:][valid_ixs.shape[0]:]) == 0
+
+            ct_vis_all += ct_vis
+            ct_stc_all += ct_stc
 
         # passed to compute_metric eventually
         return pred
@@ -586,8 +603,8 @@ class Module(Base):
             tasks_per_subgoal_aux_loss = torch.empty(max_num_subgoals, device=device, dtype=torch.float)
             for subgoal_i in range(max_num_subgoals):
 
-                # (B, ) last time step for each task in this subgoal
-                action_low_seq_lengths = feat['action_low_seq_lengths'][subgoal_i] - 1
+                # (B, ) last time step for each task in this subgoal, excluding stop action
+                action_low_seq_lengths = feat['action_low_seq_lengths'][subgoal_i] - 2
 
                 vis_loss_per_subgoal[subgoal_i], tasks_per_subgoal_vis = self.compute_aux_loss(
                     valid_object_indices=feat['object_token_id'][subgoal_i][:,0,:],
@@ -597,7 +614,7 @@ class Module(Base):
                 state_change_loss_per_subgoal[subgoal_i], tasks_per_subgoal_state_change = self.compute_aux_loss(
                     valid_object_indices=feat['object_token_id'][subgoal_i][:,0,:],
                     predicted_scores=out['out_state_change_score'][subgoal_i],
-                    targets=feat['object_state_change'][subgoal_i][torch.arange(batch_size),action_low_seq_lengths,:]
+                    targets=feat['object_state_change_since_last_subgoal'][subgoal_i][torch.arange(batch_size),action_low_seq_lengths,:]
                     )
                 assert torch.all(tasks_per_subgoal_vis.eq(tasks_per_subgoal_state_change))
                 tasks_per_subgoal_aux_loss[subgoal_i] = tasks_per_subgoal_vis
