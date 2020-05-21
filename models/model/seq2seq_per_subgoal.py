@@ -631,6 +631,15 @@ class Module(Base):
         flatten_isntr = lambda sent: [word.strip() for word in sent]
 
         all_pred_id_ann = list(preds.keys())
+
+        # Book keeping to compute Precision and Recall
+        TP_VIS_ALL = []
+        TP_STC_ALL = []
+        FP_VIS_ALL = []
+        FP_STC_ALL = []
+        FN_VIS_ALL = []
+        FN_STC_ALL = []
+
         for task in data:
             
             # BLEU
@@ -655,17 +664,12 @@ class Module(Base):
 
             # AUX LOSS
             if self.aux_loss_over_object_states:
-                TP_VIS_ALL = []
-                TP_STC_ALL = []
-                FP_VIS_ALL = []
-                FP_STC_ALL = []
-                FN_VIS_ALL = []
-                FN_STC_ALL = []
+
                 for subgoal_i in range(num_subgoals):
                     pred_vis = preds[pred_id_ann]['p_obj_vis'][subgoal_i]
                     gt_vis = preds[pred_id_ann]['l_obj_vis'][subgoal_i]
                     pred_stc = preds[pred_id_ann]['p_state_change'][subgoal_i]
-                    gt_stc = preds[pred_id_ann]['l_obj_vis'][subgoal_i]
+                    gt_stc = preds[pred_id_ann]['l_state_change'][subgoal_i]
                     # Accuracy, TP, FP, FN
                     # each array (num objects in task)
                     acc_vis, tp_vis, fp_vis, fn_vis = self.classify_preds(pred_vis, gt_vis)
@@ -684,6 +688,7 @@ class Module(Base):
 
         assert len(all_pred_id_ann) == 0
         m_out = {k: sum(v)/len(v) for k, v in m.items()}
+
         if self.aux_loss_over_object_states:
             m_out['PRECISION_VIS'] = sum(TP_VIS_ALL) / (sum(TP_VIS_ALL) + sum(FP_VIS_ALL))
             m_out['RECALL_VIS'] = sum(TP_VIS_ALL) / (sum(TP_VIS_ALL) + sum(FN_VIS_ALL))
@@ -694,6 +699,8 @@ class Module(Base):
             m_out['TOTAL_PRED_STC'] = sum(TP_STC_ALL) + sum(FP_STC_ALL)
             m_out['TOTAL_GT_VIS'] = sum(TP_VIS_ALL) + sum(FN_VIS_ALL)
             m_out['TOTAL_PRED_VIS'] = sum(TP_VIS_ALL) + sum(FP_VIS_ALL)
-            m_out['TOTAL_COUNT'] = len(TP_VIS_ALL)
-
+            
+            m_out['TOTAL_COUNT_VIS'] = len(TP_VIS_ALL)
+            m_out['TOTAL_COUNT_STC'] = len(TP_STC_ALL)
+            
         return m_out
