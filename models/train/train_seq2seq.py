@@ -20,6 +20,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', help='random seed', default=123, type=int)
     parser.add_argument('--data', help='dataset folder', default='data/json_feat_2.1.0')
     parser.add_argument('--splits', help='json file containing train/dev/test splits', default='data/splits/may17.json')
+    parser.add_argument('--object_vocab', help='object vocabulary file prefix', default='objects_20200522')
     parser.add_argument('--preprocess', help='store preprocessed data to json files', action='store_true')
     parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
     parser.add_argument('--save_every_epoch', help='save model after every epoch (warning: consumes a lot of space)', action='store_true')
@@ -97,7 +98,7 @@ if __name__ == '__main__':
         vocab = torch.load(os.path.join(args.data, "%s.vocab" % args.pp_folder))
 
     # TODO hacky -- incorporate into preprocessing
-    object_vocab = torch.load(os.path.join(args.data, '%s.vocab' % 'objects'))
+    object_vocab = torch.load(os.path.join(args.data, '%s.vocab' % args.object_vocab))
 
     # load model
     M = import_module('model.{}'.format(args.model))
