@@ -22,6 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('--splits', help='json file containing train/dev/test splits', default='data/splits/may17.json')
     parser.add_argument('--preprocess', help='store preprocessed data to json files', action='store_true')
     parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
+    parser.add_argument('--object_vocab', help='object_vocab version', default='object_20200521')
     parser.add_argument('--save_every_epoch', help='save model after every epoch (warning: consumes a lot of space)', action='store_true')
     parser.add_argument('--model', help='model to use', default='seq2seq_nl_baseline')
     parser.add_argument('--gpu', help='use gpu', action='store_true')
@@ -45,7 +46,7 @@ if __name__ == '__main__':
     # architecture ablations
     parser.add_argument('--encoder_addons', type=str, default='none', choices=['none', 'max_pool_obj', 'biattn_obj'])
     parser.add_argument('--decoder_addons', type=str, default='none', choices=['none', 'aux_loss'])
-    parser.add_argument('--object_repr', type=str, default='type', choices=['type', 'instance'])
+    parser.add_argument('--object_repr', type=str, default='type', choices=['type', 'instance'], default='type')
 
     # dropouts
     parser.add_argument('--zero_goal', help='zero out goal language', action='store_true')
@@ -97,7 +98,7 @@ if __name__ == '__main__':
         vocab = torch.load(os.path.join(args.data, "%s.vocab" % args.pp_folder))
 
     # TODO hacky -- incorporate into preprocessing
-    object_vocab = torch.load(os.path.join(args.data, '%s.vocab' % 'objects'))
+    object_vocab = torch.load(os.path.join(args.data, '%s.vocab' % args.object_vocab))
 
     # load model
     M = import_module('model.{}'.format(args.model))

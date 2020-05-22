@@ -25,18 +25,30 @@ class Module(Base):
 
         self.pp_folder = args.pp_folder
 
+        self.encoder_addons = encoder_addons
+        self.decoder_addons = decoder_addons
+
+        # linear project for instance embeddings
+        if self.object_repr == 'instance':
+            obj_demb = self.emb_object.weight.size(1)
+            self.instance_fc = nn.Linear(obj_demb + obj_demb + 1, args.dhid)
+        else:
+            self.instance_fc = None
+
         # action sequence decoder
-        if args.encoder_addons == 'max_pool_obj':
+        if self.encoder_addons == 'max_pool_obj':
             encoder = vnn.ActionFrameAttnEncoderPerSubgoalMaxPool
-        elif args.encoder_addons == 'biattn_obj':
+        elif self.encoder_addons == 'biattn_obj':
             encoder = vnn.ActionFrameAttnEncoderPerSubgoalObjAttn
         else: # 'none'
             encoder = vnn.ActionFrameAttnEncoderPerSubgoal
 
         self.enc = encoder( emb=self.emb_action_low,
                             obj_emb=self.emb_object,
+                            object_repr=self.object_repr,
                             dframe=args.dframe, 
                             dhid=args.dhid,
+                            instance_fc=self.instance_fc,
                             act_dropout=args.act_dropout,
                             vis_dropout=args.vis_dropout,
                             input_dropout=args.input_dropout,
@@ -45,7 +57,7 @@ class Module(Base):
                             bidirectional=True)   
 
         # language decoder
-        if args.decoder_addons == 'aux_loss':
+        if self.decoder_addons == 'aux_loss':
             self.aux_loss_over_object_states = True
         else: # 'none'
             self.aux_loss_over_object_states = False
@@ -53,7 +65,9 @@ class Module(Base):
         decoder = vnn.LanguageDecoder
         self.dec = decoder( emb=self.emb_word,
                             obj_emb=self.emb_object,
-                            dhid=2*args.dhid, 
+                            dhid=2*args.dhid,
+                            object_repr=self.object_repr,
+                            instance_fc=self.instance_fc,
                             attn_dropout=args.attn_dropout,
                             hstate_dropout=args.hstate_dropout,
                             word_dropout=args.word_dropout,
@@ -204,27 +218,40 @@ class Module(Base):
             time_report['featurize_input_resnet_features'] += time.time() - start_time
             # -----------loading state features------------------
 
-            states_root = root.replace('train/', '').replace('valid_seen/', '').replace('valid_unseen/', '')
-            with open(os.path.join(states_root, '{}/extracted_feature_states.json'.format(self.pp_folder)), 'r') as f:
-                obj_states = json.load(f)
+            if self.encoder_addons != 'none' and self.decoder_addons != 'none':
 
-            num_objects = len(obj_states['objectTypeList'])
-            if num_objects > max_num_objects:
-                max_num_objects = num_objects
+                states_root = root.replace('train/', '').replace('valid_seen/', '').replace('valid_unseen/', '')
+                with open(os.path.join(states_root, '{}/extracted_feature_states.json'.format(self.pp_folder)), 'r') as f:
+                    obj_states = json.load(f)
 
-            for subgoal_i in range(num_subgoals):
-                # each is a list (timestep) of lists (num objects)
-                # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
-                feat['object_state_change'][subgoal_i][batch_i] = obj_states['type_state_change'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
-                # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
-                feat['object_state_change_since_last_subgoal'][subgoal_i][batch_i] = obj_states['type_state_change_since_last_subgoal'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
-                # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
-                feat['object_visibility'][subgoal_i][batch_i] = obj_states['type_visibile'][subgoal_i] + [obj_states['type_visibile'][subgoal_i][-1]]  # include <<stop>>
-                # each is a list (timestep) of lists (num objects)
-                # [[apple idx, pear idx, ...], [apple idx, pear idx, ...], [apple idx, pear idx, ...]]
-                num_timesteps = len(obj_states['type_state_change'][subgoal_i]) + 1  # include <<stop>>
-                feat['object_token_id'][subgoal_i][batch_i] = [obj_states['objectTypeList_TypeNum'] for _ in range(num_timesteps)]
+                num_objects = len(obj_states['objectTypeList'])
+                if num_objects > max_num_objects:
+                    max_num_objects = num_objects
 
+                for subgoal_i in range(num_subgoals):
+                    if self.object_repr == 'type':
+                        # each is a list (timestep) of lists (num objects)
+                        # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
+                        feat['object_state_change'][subgoal_i][batch_i] = obj_states['type_state_change'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
+                        feat['object_state_change_since_last_subgoal'][subgoal_i][batch_i] = obj_states['type_state_change_since_last_subgoal'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
+                        feat['object_visibility'][subgoal_i][batch_i] = obj_states['type_visibile'][subgoal_i] + [obj_states['type_visibile'][subgoal_i][-1]]  # include <<stop>>
+                        # [[apple idx, pear idx, ...], [apple idx, pear idx, ...], [apple idx, pear idx, ...]]
+                        num_timesteps = len(obj_states['type_state_change'][subgoal_i]) + 1  # include <<stop>>
+                        feat['object_token_id'][subgoal_i][batch_i] = [obj_states['objectTypeList_TypeNum'] for _ in range(num_timesteps)]
+                    elif self.object_repr == 'instance':
+                        # each is a list (timestep) of lists (num objects)
+                        # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
+                        feat['object_state_change'][subgoal_i][batch_i] = obj_states['instance_state_change'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
+                        feat['object_state_change_since_last_subgoal'][subgoal_i][batch_i] = obj_states['instance_state_change_since_last_subgoal'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
+                        feat['object_visibility'][subgoal_i][batch_i] = obj_states['instance_visibile'][subgoal_i] + [obj_states['instance_visibile'][subgoal_i][-1]]  # include <<stop>>
+                        feat['object_receptacle_change'][subgoal_i][batch_i] = obj_states['instance_receptacle_change'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
+                        feat['object_receptacle_change_since_last_subgoal'][subgoal_i][batch_i] = obj_states['instance_receptacle_change_since_last_subgoal'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
+                        feat['object_distance'][subgoal_i][batch_i] = obj_states['instance_distance'][subgoal_i] + [obj_states['instance_distance'][subgoal_i][-1]]  # include <<stop>>
+                        feat['receptacle_token_id'][subgoal_i][batch_i] = obj_states['objectReceptacleList_TypeNum'][subgoal_i] + [obj_states['objectReceptacleList_TypeNum'][subgoal_i][-1]]  # include <<stop>>
+                        # [[apple idx, pear idx, ...], [apple idx, pear idx, ...], [apple idx, pear idx, ...]]
+                        num_timesteps = len(obj_states['instance_state_change'][subgoal_i]) + 1  # include <<stop>>
+                        feat['object_token_id'][subgoal_i][batch_i] = [obj_states['objectInstanceList_TypeNum'] for _ in range(num_timesteps)]                        
+                         
         # tensorization and padding
         # time
         start_time = time.time()
@@ -285,7 +312,11 @@ class Module(Base):
                 assert all_pad_seqs[-1].shape[0] == batch_size
                 feat[k] = all_pad_seqs
             
-            elif k in {'object_token_id', 'object_visibility', 'object_state_change', 'object_state_change_since_last_subgoal'}:
+            elif k in {
+                'object_token_id', 'receptacle_token_id', 
+                'object_state_change', 'object_state_change_since_last_subgoal', 
+                'object_receptacle_change', 'object_receptacle_change_since_last_subgoal', 
+                'object_distance', 'object_visibility'}:
 
                 all_pad_seqs = []
                 # shape (1, max_num_objects) -- single time step, 40 objects
@@ -348,10 +379,10 @@ class Module(Base):
         # run decoder until entire sentence in subgoal is finished
         res, curr_dec_state = self.dec(
             enc=enc_act,
+            feat_subgoal=feat_subgoal,
             max_decode=max_decode,
-            gold=feat_subgoal['lang_instr'],
             state_0=dec_state_0,
-            valid_object_indices= feat_subgoal['object_token_id'][:,0,:] if self.aux_loss_over_object_states else None, 
+            valid_object_indices = feat_subgoal['object_token_id'][:,0,:] if self.aux_loss_over_object_states else None, 
             validate_teacher_forcing=validate_teacher_forcing, 
             validate_sample_output=validate_sample_output,
             )

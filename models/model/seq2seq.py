@@ -28,10 +28,13 @@ class Module(nn.Module):
         self.vocab = vocab
         self.object_vocab = object_vocab
 
+        # by 'instance' or 'type'
+        self.object_repr = args.object_repr
+
         # emb modules
         self.emb_word = nn.Embedding(len(vocab['word']), args.demb)
         self.emb_action_low = nn.Embedding(len(vocab['action_low']), args.demb)
-        self.emb_object = nn.Embedding(len(object_vocab['object_type']), args.dhid, padding_idx=0)
+        self.emb_object = nn.Embedding(len(object_vocab['object_type']), args.dhid if self.object_repr == 'type' else args.demb, padding_idx=0)
 
         self.word_stop_token = self.vocab['word'].word2index("<<stop>>", train=False)
         self.action_stop_token = self.vocab['action_low'].word2index("<<stop>>", train=False)
@@ -222,7 +225,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
-                    'object_vacab': self.vocab,
+                    'object_vocab': self.object_vocab,
                     'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_seen.json')
@@ -253,7 +256,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
-                    'object_vacab': self.vocab,
+                    'object_vocab': self.object_vocab,
                     'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_unseen.json')
@@ -284,7 +287,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
-                    'object_vacab': self.vocab,
+                    'object_vocab': self.object_vocab,
                     'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_train_sanity.json')
@@ -316,7 +319,7 @@ class Module(nn.Module):
                 'optim': optimizer.state_dict(),
                 'args': self.args,
                 'vocab': self.vocab,
-                'object_vacab': self.vocab,
+                'object_vocab': self.object_vocab,
                 'epoch': epoch,
             }, fsave)
             # time

@@ -79,6 +79,7 @@ class ResnetVisualEncoder(nn.Module):
 
         return x
 
+
 class ActionFrameAttnEncoder(nn.Module):
     '''
     action and frame sequence encoder base
@@ -175,14 +176,14 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
     action and frame sequence encoder. encode one subgoal at a time.
     '''
 
-    def __init__(self, emb, dframe, dhid,
-                act_dropout=0., vis_dropout=0., input_dropout=0., hstate_dropout=0., attn_dropout=0., bidirectional=True, obj_emb=None):
+    def __init__(self, emb, obj_emb, object_repr, dframe, dhid, instance_fc,
+                act_dropout=0., vis_dropout=0., input_dropout=0., hstate_dropout=0., attn_dropout=0., bidirectional=True):
 
-        super(ActionFrameAttnEncoderPerSubgoal, self).__init__(emb, dframe, dhid,
+        super(ActionFrameAttnEncoderPerSubgoal, self).__init__(emb=emb, dframe=dframe, dhid=dhid,
                  act_dropout=act_dropout, vis_dropout=vis_dropout, bidirectional=bidirectional)
             
         # Image + Action encoder
-        # action embedding + image vector dim + obj embedding + obj embedding
+        # action embedding + image vector dim
         # or action embedding + image vector dim
         self.encoder = nn.LSTM( self.demb+self.dframe,
                                 self.dhid, 
@@ -191,6 +192,33 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
         self.input_dropout = nn.Dropout(input_dropout)
         self.hstate_dropout = nn.Dropout(hstate_dropout)
         self.attn_dropout = nn.Dropout(attn_dropout)
+
+        # object handling
+        # (V, dhid)
+        self.obj_emb = obj_emb
+        self.obj_demb = self.obj_emb.weight.size(1)
+        self.object_repr = object_repr # 'type' or 'instance
+
+        if self.object_repr == 'instance':
+            assert instance_fc is not None
+            self.instance_fc = instance_fc
+
+    def make_instance_embeddings(self, object_indices, receptacle_indices, object_distances):
+        '''
+        object_indices: (B, t, max_num_objects in batch)
+        receptacle_indices: (B, t, max_num_objects in batch)
+        object_distance: (B, t, max_num_objects in batch)
+        '''
+        # concat and transform
+        
+        # (B, t, max_num_objects in batch, obj demb)
+        obj_embeddings = self.obj_emb(object_indices)      
+        # (B, t, max_num_objects in batch, obj demb)
+        recep_embeddings = self.obj_emb(receptacle_indices)
+        # (B, t, max_num_objects in batch, obj demb + obj demb + 1)
+        cat_embeddings = torch.cat([obj_embeddings, recep_embeddings, object_distances.unsqueeze(-1)], dim=obj_embeddings.shape[-1])
+        # (B, t, max_num_objects in batch, dhid)
+        return self.instance_fc(cat_embeddings)
 
     def forward(self, feat_subgoal, last_subgoal_hx):
         '''
@@ -229,7 +257,7 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
         cont_act = self.enc_att(enc_act)
 
         # return both compact, per-step representations, (h_n, c_n) for starting next subgoal encoding
-        return cont_act, enc_act, curr_subgoal_states 
+        return cont_act, enc_act, curr_subgoal_states
 
 
 class ActionFrameAttnEncoderPerSubgoalObjAttn(ActionFrameAttnEncoderPerSubgoal):
@@ -237,33 +265,36 @@ class ActionFrameAttnEncoderPerSubgoalObjAttn(ActionFrameAttnEncoderPerSubgoal):
     action and frame sequence encoder. encode one subgoal at a time. use attention over object states
     '''
 
-    def __init__(self, emb, obj_emb, dframe, dhid,
+    def __init__(self, emb, obj_emb, object_repr, dframe, dhid, instance_fc
                  act_dropout=0., vis_dropout=0., input_dropout=0., hstate_dropout=0., attn_dropout=0., bidirectional=True):
 
-        super(ActionFrameAttnEncoderPerSubgoalObjAttn, self).__init__(emb, dframe, dhid,
+        super(ActionFrameAttnEncoderPerSubgoalObjAttn, self).__init__(emb=emb, obj_emb=obj_emb, object_repr=object_repr, dframe=dframe, dhid=dhid, instance_fc=instance_fc,
                 act_dropout=act_dropout, vis_dropout=vis_dropout, input_dropout=input_dropout ,hstate_dropout=hstate_dropout, attn_dropout=attn_dropout, bidirectional=bidirectional)
 
         # object states handling
-        # (V, dhid)
-        self.obj_emb = obj_emb
         # dhid to dhid
         self.obj_attn = DotAttn()
         # linear for hidden state before attention
         self.h_tm1_fc = nn.Linear(dhid, dhid)
 
         # Image + Action + obj attn encoder
-        # action embedding + image vector dim + obj vis embed + obj stc embed
+        # action embedding + image vector dim + obj embed + obj embed
         self.forward_cell = nn.LSTMCell(self.demb+self.dframe+self.dhid+self.dhid, self.dhid)
         if bidirectional:
             self.backward_cell = nn.LSTMCell(self.demb+self.dframe+self.dhid+self.dhid, self.dhid)
 
-    def filter_obj_embeds(self, object_indices, object_boolean_features):
+    def filter_obj_embeds(self, object_indices, object_boolean_features, receptacle_indices=None, object_distances=None):
         '''
         make continuous repr for object embeddding, visibility and state change.
         '''
-        # (B, t, max_num_objects in batch, demb)
-        obj_embeddings = self.obj_emb(object_indices)
-        # (B, t, max_num_objects in batch, demb)
+        if self.object_repr == 'instance':
+            # (B, t, max_num_objects in batch, dhid)
+            obj_embeddings = self.make_instance_embeddings(object_indices, receptacle_indices, object_distances)            
+        else: # 'type'
+            # (B, t, max_num_objects in batch, dhid)
+            obj_embeddings = self.obj_emb(object_indices)
+
+        # (B, t, max_num_objects in batch, dhid)
         obj_embeddings = object_boolean_features.unsqueeze(-1).expand_as(obj_embeddings).mul(obj_embeddings)
         return obj_embeddings
 
@@ -371,9 +402,18 @@ class ActionFrameAttnEncoderPerSubgoalObjAttn(ActionFrameAttnEncoderPerSubgoal):
         vis_feat = self.vis_enc_step(frames)
 
         # Make object representation
-        # (B, t, max_num_objects in batch, demb), (B, t, max_num_objects in batch, demb)
-        obj_vis = self.filter_obj_embeds(feat_subgoal['object_token_id'], feat_subgoal['object_visibility'])
-        obj_stc = self.filter_obj_embeds(feat_subgoal['object_token_id'], feat_subgoal['object_state_change'])
+        if self.object_repr == 'instance':
+            # (B, t, max_num_objects in batch, dhid)
+            obj_vis = self.filter_obj_embeds(
+                feat_subgoal['object_token_id'], feat_subgoal['object_visibility'], 
+                receptacle_indices=feat_subgoal['receptacle_token_id'], object_distances=feat_subgoal['object_distance'])
+            obj_stc = self.filter_obj_embeds(
+                feat_subgoal['object_token_id'], feat_subgoal['object_state_change'], 
+                receptacle_indices=feat_subgoal['receptacle_token_id'], object_distances=feat_subgoal['object_distance'])
+        else: # 'type'
+            # (B, t, max_num_objects in batch, dhid)
+            obj_vis = self.filter_obj_embeds(feat_subgoal['object_token_id'], feat_subgoal['object_visibility'])
+            obj_stc = self.filter_obj_embeds(feat_subgoal['object_token_id'], feat_subgoal['object_state_change'])
 
         # hidden state at timestep 0
         if last_subgoal_hx is None:
@@ -398,14 +438,11 @@ class ActionFrameAttnEncoderPerSubgoalMaxPool(ActionFrameAttnEncoderPerSubgoal):
     action and frame sequence encoder. encode one subgoal at a time. max-pool over object states
     '''
 
-    def __init__(self, emb, obj_emb, dframe, dhid,
+    def __init__(self, emb, obj_emb, object_repr, dframe, dhid, instance_fc,
                  act_dropout=0., vis_dropout=0., input_dropout=0., hstate_dropout=0., attn_dropout=0., bidirectional=True):
 
-        super(ActionFrameAttnEncoderPerSubgoalMaxPool, self).__init__(emb, dframe, dhid,
+        super(ActionFrameAttnEncoderPerSubgoalMaxPool, self).__init__(emb=emb, obj_emb=obj_emb, object_repr=object_repr, dframe=dframe, dhid=dhid, instance_fc=instance_fc,
                 act_dropout=act_dropout, vis_dropout=vis_dropout, input_dropout=input_dropout, hstate_dropout=hstate_dropout, attn_dropout=attn_dropout, bidirectional=bidirectional)
-
-        # object embedding
-        self.obj_emb = obj_emb
             
         # Image + Action encoder
         # action embedding + image vector dim + obj embedding + obj embedding
@@ -415,20 +452,22 @@ class ActionFrameAttnEncoderPerSubgoalMaxPool(ActionFrameAttnEncoderPerSubgoal):
                                 bidirectional=self.bidirectional, 
                                 batch_first=True)       
 
-    def max_pool_object_features(self, object_indices, object_boolean_features):
+    def max_pool_object_features(self, object_indices, object_boolean_features, receptacle_indices=None, object_distances=None):
         '''
         Max pool each embedding val across objects.
         object_indices : shape (B, t, max_num_objects in batch). each int index for object vocab.
         object_boolean_features : shape (B, t, max_num_objects in batch). each 1/0
         '''
-        # (B, t, max_num_objects in batch, dhid)
-        obj_embeddings = self.obj_emb(object_indices)
+        if self.object_repr == 'instance':
+            # (B, t, max_num_objects in batch, dhid)
+            obj_embeddings = self.make_instance_embeddings(object_indices, receptacle_indices, object_distances)               
+        else: 'type'
+            # (B, t, max_num_objects in batch, dhid)
+            obj_embeddings = self.obj_emb(object_indices)
         # (B, t, max_num_objects in batch, dhid)
         obj_embeddings = object_boolean_features.unsqueeze(-1).expand_as(obj_embeddings).mul(obj_embeddings)
         # (B, t, dhid)
-        obj_embeddings = obj_embeddings.max(2)[0]
-
-        return obj_embeddings
+        return obj_embeddings.max(2)[0]
 
     def forward(self, feat_subgoal, last_subgoal_hx):
         '''
@@ -451,10 +490,19 @@ class ActionFrameAttnEncoderPerSubgoalMaxPool(ActionFrameAttnEncoderPerSubgoal):
         # (B, t, args.dframe)
         vis_feat = self.vis_enc_step(frames)
 
-        # Object States
-        # (B, t, dhid), (B, t, dhid)
-        obj_visible = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_visibility'])
-        obj_state_change = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_state_change'])
+        # Make object representation
+        if self.object_repr == 'instance':
+            # (B, t, dhid), (B, t, dhid)
+            obj_visible = self.max_pool_object_features(
+                feat_subgoal['object_token_id'], feat_subgoal['object_visibility'], 
+                receptacle_indices=feat_subgoal['receptacle_token_id'], object_distances=feat_subgoal['object_distance'])
+            obj_state_change = self.max_pool_object_features(
+                feat_subgoal['object_token_id'], feat_subgoal['object_state_change'], 
+                receptacle_indices=feat_subgoal['receptacle_token_id'], object_distances=feat_subgoal['object_distance'])            
+        else: 'type'
+            # (B, t, dhid)
+            obj_visible = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_visibility'])
+            obj_state_change = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_state_change'])
 
         # ( B, t, args.demb+args.dframe+args.dhid+args.dhid)
         inp_seq = torch.cat([emb_act, vis_feat, obj_visible, obj_state_change], dim=2)
@@ -708,7 +756,7 @@ class LanguageDecoder(nn.Module):
 
     def __init__(self, emb, dhid, attn_dropout=0., hstate_dropout=0.,
                  word_dropout=0., input_dropout=0., train_teacher_forcing=False, train_student_forcing_prob=0.1, 
-                 obj_emb=None, aux_loss_over_object_states=False):
+                 obj_emb=None, aux_loss_over_object_states=False, object_repr=None, instance_fc=None):
         
         super().__init__()
         # args.demb
@@ -741,9 +789,13 @@ class LanguageDecoder(nn.Module):
         self.train_teacher_forcing = train_teacher_forcing
         self.train_student_forcing_prob = train_student_forcing_prob
         self.h_tm1_fc = nn.Linear(dhid, dhid)
+
         # Aux Loss
-        self.h_enc_fc = nn.Linear(1, 2)
         self.aux_loss_over_object_states = aux_loss_over_object_states
+        if self.aux_loss_over_object_states:
+            self.object_repr = object_repr
+            self.h_enc_fc = nn.Linear(1, 2)
+            self.instance_fc = instance_fc
 
         nn.init.uniform_(self.go, -0.1, 0.1)
 
@@ -787,7 +839,22 @@ class LanguageDecoder(nn.Module):
  
         return word_t, state_t, act_attn_t
 
-    def forward(self, enc, gold=None, max_decode=50, state_0=None,  valid_object_indices=None,
+    def make_instance_embeddings(self, object_indices, receptacle_indices, object_distances):
+        '''
+        object_indices: (B, t, max_num_objects in batch)
+        receptacle_indices: (B, t, max_num_objects in batch)
+        object_distance: (B, t, max_num_objects in batch)
+        '''
+        # (B, max_num_objects in batch, obj demb)
+        obj_embeddings = self.obj_emb(object_indices)      
+        # (B, max_num_objects in batch, obj demb)
+        recep_embeddings = self.obj_emb(receptacle_indices)
+        # (B, max_num_objects in batch, obj demb + obj demb + 1)
+        cat_embeddings = torch.cat([obj_embeddings, recep_embeddings, object_distances.unsqueeze(-1)], dim=obj_embeddings.shape[-1])
+        # (B, max_num_objects in batch, dhid)
+        return self.instance_fc(cat_embeddings)
+
+    def forward(self, enc, feat_subgoal, max_decode=50, state_0=None,  valid_object_indices=None,
                 validate_teacher_forcing=False, validate_sample_output=False):
         '''
         enc :                     (B, T, args.dhid). LSTM encoder per action output
@@ -804,30 +871,42 @@ class LanguageDecoder(nn.Module):
         # (B, 2*args.dhid)
         h_enc_tm1 = state_0[0]
 
-        # Max pool
-        # (B, args.dhid)
-        h_enc_max_pooled = torch.max(h_enc_tm1.reshape(h_enc_tm1.shape[0], 2, -1), dim=1)[0]
-        assert h_enc_max_pooled.shape == (h_enc_tm1.shape[0], h_enc_tm1.shape[1]/2)
-
-        # Expand by linear layer
-        # (B, args.dhid, 1) -> (B, args.dhid, 2)
-        h_enc_extended = self.h_enc_fc(h_enc_max_pooled.unsqueeze(-1))
-        # (B, 2, args.dhid)
-        h_enc_extended = h_enc_extended.transpose(1, 2)
-
         # Simple Aux Loss prediction using dot products
         obj_visibilty_scores, obj_state_change_scores = None, None
         if self.aux_loss_over_object_states:
-            # (B, args.dhid, V)
-            obj_m = self.obj_emb.weight.t().unsqueeze(0).repeat(h_enc_tm1.shape[0],1,1)
-            # (B, 2, args.dhid) bmm (B, args.dhid, V) = (B, 2, V)
-            aux_scores = h_enc_extended.bmm(obj_m)
-            # (B, V), (B, V)
-            obj_visibilty_scores, obj_state_change_scores = aux_scores[:,0,:], aux_scores[:,1,:]
+
+            # Max pool hidden state 
+            # (B, args.dhid)
+            h_enc_max_pooled = torch.max(h_enc_tm1.reshape(h_enc_tm1.shape[0], 2, -1), dim=1)[0]
+            assert h_enc_max_pooled.shape == (h_enc_tm1.shape[0], h_enc_tm1.shape[1]/2)
+
+            # Expand by linear layer
+            # (B, args.dhid, 1) -> (B, args.dhid, 2)
+            h_enc_extended = self.h_enc_fc(h_enc_max_pooled.unsqueeze(-1))
+            # (B, 2, args.dhid)
+            h_enc_extended = h_enc_extended.transpose(1, 2)            
+
+            if self.object_repr == 'instance':
+                
+                # TODO be careful about padding. index is not max_t
+                # take seq_lengths - 2!
+                # r indices at the beginning of subgoal
+                # object distances at the beginning of subgoal
+                self.make_instance_embeddings(object_indices, receptacle_indices, object_distances)
+
+            else: # 'type'
+                # TODO simplify this!
+                # (B, args.dhid, V)
+                obj_m = self.obj_emb.weight.t().unsqueeze(0).repeat(h_enc_tm1.shape[0],1,1)
+                # (B, 2, args.dhid) bmm (B, args.dhid, V) = (B, 2, V)
+                aux_scores = h_enc_extended.bmm(obj_m)
+                # (B, V), (B, V)
+                obj_visibilty_scores, obj_state_change_scores = aux_scores[:,0,:], aux_scores[:,1,:]
 
         # deal with valid object indices in compute_loss
 
         # Language Model----------------------------------------------
+        gold = feat_subgoal['lang_instr']
         max_t = gold.size(1) if (self.training or validate_teacher_forcing) else max_decode
         batch = enc.size(0)
         # go is a learned embedding
