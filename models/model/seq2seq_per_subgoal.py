@@ -493,7 +493,7 @@ class Module(Base):
 
             # Aux Loss
             if self.aux_loss_over_object_states:
-                # (B, object vocab size)
+                # (B, max_num_objects of batch)
                 obj_vis_pred = out['out_obj_vis_score'][subgoal_i]
                 obj_state_change_pred = out['out_state_change_score'][subgoal_i]
 
@@ -514,13 +514,11 @@ class Module(Base):
                     obj_vis_pred, obj_state_change_pred,
                     obj_vis_gold, obj_state_change_gold):
 
-                    valid_ixs = valid_ixs[valid_ixs.nonzero()].squeeze(1)
-
                     task_id_ann = self.get_task_and_ann_id(ex)
                     # (num_objects in task,)
                     valid_ixs = get_non_zero_elements(valid_ixs)
-                    pred[task_id_ann]['p_obj_vis'][subgoal_i] = F.sigmoid(p_vis[valid_ixs])
-                    pred[task_id_ann]['p_state_change'][subgoal_i] = F.sigmoid(p_sc[valid_ixs])
+                    pred[task_id_ann]['p_obj_vis'][subgoal_i] = F.sigmoid(p_vis[:valid_ixs.shape[0]])
+                    pred[task_id_ann]['p_state_change'][subgoal_i] = F.sigmoid(p_sc[:valid_ixs.shape[0]])
                     # (num_objects in task,)
                     pred[task_id_ann]['l_obj_vis'][subgoal_i] = g_vis[last_t,:][:valid_ixs.shape[0]]
                     pred[task_id_ann]['l_state_change'][subgoal_i] = g_sc[last_t,:][:valid_ixs.shape[0]]
@@ -528,6 +526,7 @@ class Module(Base):
                     ct_vis += torch.sum(g_vis[last_t,:][:valid_ixs.shape[0]]).cpu().item()
                     ct_stc += torch.sum(g_sc[last_t,:][:valid_ixs.shape[0]]).cpu().item()
 
+                    import pdb; pdb.set_trace()
                     assert torch.sum(g_vis[last_t,:][valid_ixs.shape[0]:]) == 0 and torch.sum(g_sc[last_t,:][valid_ixs.shape[0]:]) == 0
 
             ct_vis_all += ct_vis
@@ -569,30 +568,24 @@ class Module(Base):
         '''
         compute Aux loss for object visibility or state change
         valid_object_indices: shape (B, max num objects in batch)
-        predicted_scores: shape (B, V)
+        predicted_scores: shape (B, max num objects in batch)
         targets: shape (B, max num objects in batch)
         '''
-        
         device = torch.device('cuda') if self.args.gpu else torch.device('cpu')
         assert valid_object_indices.shape == targets.shape
 
         # scalar, number of valid tasks in this subgoal.
         num_valid_tasks = torch.sum(torch.sum(valid_object_indices, dim=1) > 0).float()
 
-        # (B, V), expand labels to matching shape
-        labels_full = torch.zeros_like(predicted_scores, dtype=torch.float, device=device)
-        valids_full = torch.zeros_like(predicted_scores, dtype=torch.float, device=device)
-        
-        for batch_i in range(valid_object_indices.shape[0]):
-            for object_j in range(valid_object_indices.shape[1]):
-                labels_full[batch_i, valid_object_indices[batch_i, object_j]] = targets[batch_i, object_j]
-                valids_full[batch_i, valid_object_indices[batch_i, object_j]] = valid_object_indices[batch_i, object_j] > 0
+        # (B, max num objects in batch)
+        pad_valids = (valid_object_indices > 0).float()
+        # (B, max num objects in batch)
+        loss_full = self.aux_criterion(input=predicted_scores, target=targets)
+        loss_full *= pad_valids
+        # (B, ) 
+        loss_per_task = torch.div(torch.sum(loss_full, dim=1), torch.max(torch.sum(pad_valids, dim=1), torch.tensor([1], dtype=torch.float, device=device))) 
 
-        # (B, V)
-        loss_full = self.aux_criterion(input=predicted_scores, target=labels_full)
-        loss_full *= valids_full
-        # (B, )
-        loss_per_task = torch.div(torch.sum(loss_full, dim=1), torch.max(torch.sum(valids_full, dim=1), torch.tensor([1], dtype=torch.float, device=device)))
+        import pdb; pdb.set_trace()
 
         # scalar, scalar
         return torch.sum(loss_per_task), num_valid_tasks

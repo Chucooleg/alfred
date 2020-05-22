@@ -767,7 +767,7 @@ class LanguageDecoder(nn.Module):
         # embedding module for objects
         self.obj_emb = obj_emb
         # hidden layer size
-        # 2*args.dhid
+        # 2*args.dhids
         self.dhid = dhid
         # LSTM cell, unroll one time step per call
         self.cell = nn.LSTMCell(dhid+demb, dhid)
@@ -782,7 +782,7 @@ class LanguageDecoder(nn.Module):
         # dropout on word fc
         self.word_dropout = nn.Dropout(word_dropout)
         # a learned initial word embedding to speed up learning
-        self.go = nn.Parameter(torch.Tensor(demb)) # TODO replace by <start>
+        self.go = nn.Parameter(torch.Tensor(demb))
         # word fc per time step
         # (1024 + 1024 + 100, 100)
         self.word = nn.Linear(dhid+dhid+demb, demb)
@@ -841,9 +841,9 @@ class LanguageDecoder(nn.Module):
 
     def make_instance_embeddings(self, object_indices, receptacle_indices, object_distances):
         '''
-        object_indices: (B, t, max_num_objects in batch)
-        receptacle_indices: (B, t, max_num_objects in batch)
-        object_distance: (B, t, max_num_objects in batch)
+        object_indices: (B, max_num_objects in batch)
+        receptacle_indices: (B, max_num_objects in batch)
+        object_distance: (B, max_num_objects in batch)
         '''
         # (B, max_num_objects in batch, obj demb)
         obj_embeddings = self.obj_emb(object_indices)      
@@ -884,24 +884,29 @@ class LanguageDecoder(nn.Module):
             # (B, args.dhid, 1) -> (B, args.dhid, 2)
             h_enc_extended = self.h_enc_fc(h_enc_max_pooled.unsqueeze(-1))
             # (B, 2, args.dhid)
-            h_enc_extended = h_enc_extended.transpose(1, 2)            
+            h_enc_extended = h_enc_extended.transpose(1, 2)
 
             if self.object_repr == 'instance':
-                
-                # TODO be careful about padding. index is not max_t
-                # take seq_lengths - 2!
-                # r indices at the beginning of subgoal
-                # object distances at the beginning of subgoal
-                self.make_instance_embeddings(object_indices, receptacle_indices, object_distances)
-
+                # Taken at beginning of subgoal with [:,0,:]
+                # (B, max_num_objects, args.dhid)
+                obj_m = self.make_instance_embeddings(
+                    object_indices=feat_subgoal['object_token_id'][:, 0, :],  # (B, max_num_objects)
+                    receptacle_indices=feat_subgoal['receptacle_token_id'][:, 0, :],  # (B, max_num_objects)
+                    object_distances=feat_subgoal['instance_distance'][:, 0, :])  # (B, max_num_objects)
+                # (B, args.dhid, max_num_objects)
+                obj_m = obj_m.transpose(1, 2)
             else: # 'type'
-                # TODO simplify this!
-                # (B, args.dhid, V)
-                obj_m = self.obj_emb.weight.t().unsqueeze(0).repeat(h_enc_tm1.shape[0],1,1)
-                # (B, 2, args.dhid) bmm (B, args.dhid, V) = (B, 2, V)
-                aux_scores = h_enc_extended.bmm(obj_m)
-                # (B, V), (B, V)
-                obj_visibilty_scores, obj_state_change_scores = aux_scores[:,0,:], aux_scores[:,1,:]
+                # Taken at beginning of subgoal
+                # (B, max_num_objects)
+                object_indices = feat_subgoal['object_token_id'][:, 0, :]
+                # (B, args.dhid, max_num_objects)
+                obj_m = self.obj_emb(object_indices).transpose(1, 2)
+
+            # obj_m = self.obj_emb.weight.t().unsqueeze(0).repeat(h_enc_tm1.shape[0],1,1)
+            # (B, 2, args.dhid) bmm (B, args.dhid, max_num_objects) = (B, 2, max_num_objects)
+            aux_scores = h_enc_extended.bmm(obj_m)
+            # (B, max_num_objects), (B, max_num_objects)
+            obj_visibilty_scores, obj_state_change_scores = aux_scores[:,0,:], aux_scores[:,1,:]                
 
         # deal with valid object indices in compute_loss
 
