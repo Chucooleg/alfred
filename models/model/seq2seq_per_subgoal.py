@@ -25,8 +25,8 @@ class Module(Base):
 
         self.pp_folder = args.pp_folder
 
-        self.encoder_addons = encoder_addons
-        self.decoder_addons = decoder_addons
+        self.encoder_addons = args.encoder_addons
+        self.decoder_addons = args.decoder_addons
 
         # linear project for instance embeddings
         if self.object_repr == 'instance':
@@ -525,10 +525,8 @@ class Module(Base):
 
                     ct_vis += torch.sum(g_vis[last_t,:][:valid_ixs.shape[0]]).cpu().item()
                     ct_stc += torch.sum(g_sc[last_t,:][:valid_ixs.shape[0]]).cpu().item()
-
-                    import pdb; pdb.set_trace()
+                    
                     assert torch.sum(g_vis[last_t,:][valid_ixs.shape[0]:]) == 0 and torch.sum(g_sc[last_t,:][valid_ixs.shape[0]:]) == 0
-
             ct_vis_all += ct_vis
             ct_stc_all += ct_stc
 
@@ -584,8 +582,6 @@ class Module(Base):
         loss_full *= pad_valids
         # (B, ) 
         loss_per_task = torch.div(torch.sum(loss_full, dim=1), torch.max(torch.sum(pad_valids, dim=1), torch.tensor([1], dtype=torch.float, device=device))) 
-
-        import pdb; pdb.set_trace()
 
         # scalar, scalar
         return torch.sum(loss_per_task), num_valid_tasks

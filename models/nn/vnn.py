@@ -265,7 +265,7 @@ class ActionFrameAttnEncoderPerSubgoalObjAttn(ActionFrameAttnEncoderPerSubgoal):
     action and frame sequence encoder. encode one subgoal at a time. use attention over object states
     '''
 
-    def __init__(self, emb, obj_emb, object_repr, dframe, dhid, instance_fc
+    def __init__(self, emb, obj_emb, object_repr, dframe, dhid, instance_fc,
                  act_dropout=0., vis_dropout=0., input_dropout=0., hstate_dropout=0., attn_dropout=0., bidirectional=True):
 
         super(ActionFrameAttnEncoderPerSubgoalObjAttn, self).__init__(emb=emb, obj_emb=obj_emb, object_repr=object_repr, dframe=dframe, dhid=dhid, instance_fc=instance_fc,
@@ -461,7 +461,7 @@ class ActionFrameAttnEncoderPerSubgoalMaxPool(ActionFrameAttnEncoderPerSubgoal):
         if self.object_repr == 'instance':
             # (B, t, max_num_objects in batch, dhid)
             obj_embeddings = self.make_instance_embeddings(object_indices, receptacle_indices, object_distances)               
-        else: 'type'
+        else: # 'type'
             # (B, t, max_num_objects in batch, dhid)
             obj_embeddings = self.obj_emb(object_indices)
         # (B, t, max_num_objects in batch, dhid)
@@ -499,7 +499,7 @@ class ActionFrameAttnEncoderPerSubgoalMaxPool(ActionFrameAttnEncoderPerSubgoal):
             obj_state_change = self.max_pool_object_features(
                 feat_subgoal['object_token_id'], feat_subgoal['object_state_change'], 
                 receptacle_indices=feat_subgoal['receptacle_token_id'], object_distances=feat_subgoal['object_distance'])            
-        else: 'type'
+        else: # 'type'
             # (B, t, dhid)
             obj_visible = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_visibility'])
             obj_state_change = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_state_change'])
@@ -852,6 +852,7 @@ class LanguageDecoder(nn.Module):
         # (B, max_num_objects in batch, obj demb + obj demb + 1)
         cat_embeddings = torch.cat([obj_embeddings, recep_embeddings, object_distances.unsqueeze(-1)], dim=obj_embeddings.shape[-1])
         # (B, max_num_objects in batch, dhid)
+        import pdb; pdb.set_trace()
         return self.instance_fc(cat_embeddings)
 
     def forward(self, enc, feat_subgoal, max_decode=50, state_0=None,  valid_object_indices=None,
