@@ -222,7 +222,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
-                    'object_vacab': self.vocab,
+                    'object_vocab': self.object_vocab,
                     'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_seen.json')
@@ -253,7 +253,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
-                    'object_vacab': self.vocab,
+                    'object_vocab': self.object_vocab,
                     'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_unseen.json')
@@ -284,7 +284,7 @@ class Module(nn.Module):
                     'optim': optimizer.state_dict(),
                     'args': self.args,
                     'vocab': self.vocab,
-                    'object_vacab': self.vocab,
+                    'object_vocab': self.object_vocab,
                     'epoch': epoch,
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_train_sanity.json')
@@ -316,7 +316,7 @@ class Module(nn.Module):
                 'optim': optimizer.state_dict(),
                 'args': self.args,
                 'vocab': self.vocab,
-                'object_vacab': self.vocab,
+                'object_vocab': self.object_vocab,
                 'epoch': epoch,
             }, fsave)
             # time
