@@ -224,12 +224,11 @@ class Module(Base):
                 with open(os.path.join(states_root, '{}/extracted_feature_states.json'.format(self.pp_folder)), 'r') as f:
                     obj_states = json.load(f)
 
-                num_objects = len(obj_states['objectTypeList'])
-                if num_objects > max_num_objects:
-                    max_num_objects = num_objects
-
                 for subgoal_i in range(num_subgoals):
                     if self.object_repr == 'type':
+                        num_objects = len(obj_states['objectTypeList'])
+                        if num_objects > max_num_objects:
+                            max_num_objects = num_objects
                         # each is a list (timestep) of lists (num objects)
                         # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
                         feat['object_state_change'][subgoal_i][batch_i] = obj_states['type_state_change'][subgoal_i] + [[0] * num_objects]  # include <<stop>>
@@ -239,6 +238,9 @@ class Module(Base):
                         num_timesteps = len(obj_states['type_state_change'][subgoal_i]) + 1  # include <<stop>>
                         feat['object_token_id'][subgoal_i][batch_i] = [obj_states['objectTypeList_TypeNum'] for _ in range(num_timesteps)]
                     elif self.object_repr == 'instance':
+                        num_objects = len(obj_states['objectInstanceList'])
+                        if num_objects > max_num_objects:
+                            max_num_objects = num_objects
                         # each is a list (timestep) of lists (num objects)
                         # [[apple 1, pear 1, ...], [apple 1 , pear 0, ...], [apple 0, pear 1, ...]]
                         feat['object_state_change'][subgoal_i][batch_i] = obj_states['instance_state_change'][subgoal_i] + [[0] * num_objects]  # include <<stop>>

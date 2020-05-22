@@ -216,7 +216,7 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
         # (B, t, max_num_objects in batch, obj demb)
         recep_embeddings = self.obj_emb(receptacle_indices)
         # (B, t, max_num_objects in batch, obj demb + obj demb + 1)
-        cat_embeddings = torch.cat([obj_embeddings, recep_embeddings, object_distances.unsqueeze(-1)], dim=obj_embeddings.shape[-1])
+        cat_embeddings = torch.cat([obj_embeddings, recep_embeddings, object_distances.unsqueeze(-1)], dim=len(obj_embeddings.shape) - 1)
         # (B, t, max_num_objects in batch, dhid)
         return self.instance_fc(cat_embeddings)
 
@@ -850,9 +850,8 @@ class LanguageDecoder(nn.Module):
         # (B, max_num_objects in batch, obj demb)
         recep_embeddings = self.obj_emb(receptacle_indices)
         # (B, max_num_objects in batch, obj demb + obj demb + 1)
-        cat_embeddings = torch.cat([obj_embeddings, recep_embeddings, object_distances.unsqueeze(-1)], dim=obj_embeddings.shape[-1])
+        cat_embeddings = torch.cat([obj_embeddings, recep_embeddings, object_distances.unsqueeze(-1)], dim=len(obj_embeddings.shape) - 1)
         # (B, max_num_objects in batch, dhid)
-        import pdb; pdb.set_trace()
         return self.instance_fc(cat_embeddings)
 
     def forward(self, enc, feat_subgoal, max_decode=50, state_0=None,  valid_object_indices=None,
@@ -893,7 +892,7 @@ class LanguageDecoder(nn.Module):
                 obj_m = self.make_instance_embeddings(
                     object_indices=feat_subgoal['object_token_id'][:, 0, :],  # (B, max_num_objects)
                     receptacle_indices=feat_subgoal['receptacle_token_id'][:, 0, :],  # (B, max_num_objects)
-                    object_distances=feat_subgoal['instance_distance'][:, 0, :])  # (B, max_num_objects)
+                    object_distances=feat_subgoal['object_distance'][:, 0, :])  # (B, max_num_objects)
                 # (B, args.dhid, max_num_objects)
                 obj_m = obj_m.transpose(1, 2)
             else: # 'type'
