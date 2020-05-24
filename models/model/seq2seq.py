@@ -53,7 +53,7 @@ class Module(nn.Module):
         for k in metrics.keys():
             self.summary_writer.add_scalar('{}/{}_{}_{}'.format(split_name, prefix, k, suffix), metrics[k], ix)
 
-    def run_train(self, splits, args=None, optimizer=None, start_epoch=0):
+    def run_train(self, splits, args=None, optimizer=None, start_epoch=0, end_epoch=50 ,start_iters=None):
         '''
         training loop
         '''
@@ -103,8 +103,19 @@ class Module(nn.Module):
         # display dout
         print("Saving to: %s" % self.args.dout)
         best_metric = {'train': -1e10, 'train_sanity': -1e10, 'valid_seen': -1e10, 'valid_unseen': -1e10}
-        train_iter, train_sanity_iter, valid_seen_iter, valid_unseen_iter = 0, 0, 0, 0
-        for epoch in trange(start_epoch, args.epoch, desc='epoch'):
+
+        if start_iters is None:
+            train_iter, train_sanity_iter, valid_seen_iter, valid_unseen_iter = 0, 0, 0, 0
+        else:
+            train_iter = start_iters['train_iter']
+            train_sanity_iter = start_iters['train_sanity_iter']
+            valid_seen_iter = start_iters['valid_seen_iter']
+            valid_unseen_iter = start_iters['valid_unseen_iter']
+
+        # TODO DELETE THIS LINE
+        train_iter, train_sanity_iter, valid_seen_iter, valid_unseen_iter = 624500, 7400, 7400, 7400
+        
+        for epoch in trange(start_epoch, end_epoch, desc='epoch'):
             # time
             epoch_start_time = time.time()
             m_train = collections.defaultdict(list)
@@ -227,6 +238,11 @@ class Module(nn.Module):
                     'vocab': self.vocab,
                     'object_vocab': self.object_vocab,
                     'epoch': epoch,
+                    'iters': {
+                        'train_iter': train_iter, 
+                        'train_sanity_iter': train_sanity_iter, 
+                        'valid_seen_iter': valid_seen_iter, 
+                        'valid_unseen_iter': valid_unseen_iter}
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_seen.json')
                 with open(fbest, 'wt') as f:
@@ -258,6 +274,11 @@ class Module(nn.Module):
                     'vocab': self.vocab,
                     'object_vocab': self.object_vocab,
                     'epoch': epoch,
+                    'iters': {
+                        'train_iter': train_iter, 
+                        'train_sanity_iter': train_sanity_iter, 
+                        'valid_seen_iter': valid_seen_iter, 
+                        'valid_unseen_iter': valid_unseen_iter}
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_unseen.json')
                 with open(fbest, 'wt') as f:
@@ -289,6 +310,11 @@ class Module(nn.Module):
                     'vocab': self.vocab,
                     'object_vocab': self.object_vocab,
                     'epoch': epoch,
+                    'iters': {
+                        'train_iter': train_iter, 
+                        'train_sanity_iter': train_sanity_iter, 
+                        'valid_seen_iter': valid_seen_iter, 
+                        'valid_unseen_iter': valid_unseen_iter}
                 }, fsave)
                 fbest = os.path.join(args.dout, 'best_train_sanity.json')
                 with open(fbest, 'wt') as f:
@@ -321,6 +347,11 @@ class Module(nn.Module):
                 'vocab': self.vocab,
                 'object_vocab': self.object_vocab,
                 'epoch': epoch,
+                'iters': {
+                    'train_iter': train_iter, 
+                    'train_sanity_iter': train_sanity_iter, 
+                    'valid_seen_iter': valid_seen_iter, 
+                    'valid_unseen_iter': valid_unseen_iter}
             }, fsave)
             # time
             time_report['torch_save_last'] += time.time() - start_time
@@ -637,23 +668,25 @@ class Module(nn.Module):
             param_group['lr'] = lr
 
     @classmethod
-    def load(cls, fsave, retain_args=None):
+    def load(cls, fsave):
         '''
         load pth model from disk
         '''
         save = torch.load(fsave)
-
-        args = save['args']
-        if retain_args is not None:
-            args.data = '/root/data_alfred/json_feat_2.1.0'
-            args.dout = retain_args.dout
-
-        model = cls(args, save['vocab'], save['object_vocab'])
+        saved_args = save['args']
+        model = cls(saved_args, save['vocab'], save['object_vocab'])
         model.load_state_dict(save['model'])
-        next_epoch = int(save['epoch']) + 1
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
         optimizer.load_state_dict(save['optim'])
-        return model, optimizer, next_epoch
+
+        # handle iter and epoch 
+        next_epoch = int(save['epoch']) + 1
+        
+        # TODO delete this line
+        next_iters = None
+        # next_iters = save['iters']
+
+        return model, optimizer, next_epoch, next_iters
 
     @classmethod
     def has_interaction(cls, action):

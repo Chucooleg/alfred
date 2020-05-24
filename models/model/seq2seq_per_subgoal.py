@@ -519,8 +519,8 @@ class Module(Base):
                     task_id_ann = self.get_task_and_ann_id(ex)
                     # (num_objects in task,)
                     valid_ixs = get_non_zero_elements(valid_ixs)
-                    pred[task_id_ann]['p_obj_vis'][subgoal_i] = F.sigmoid(p_vis[:valid_ixs.shape[0]])
-                    pred[task_id_ann]['p_state_change'][subgoal_i] = F.sigmoid(p_sc[:valid_ixs.shape[0]])
+                    pred[task_id_ann]['p_obj_vis'][subgoal_i] = torch.sigmoid(p_vis[:valid_ixs.shape[0]])
+                    pred[task_id_ann]['p_state_change'][subgoal_i] = torch.sigmoid(p_sc[:valid_ixs.shape[0]])
                     # (num_objects in task,)
                     pred[task_id_ann]['l_obj_vis'][subgoal_i] = g_vis[last_t,:][:valid_ixs.shape[0]]
                     pred[task_id_ann]['l_state_change'][subgoal_i] = g_sc[last_t,:][:valid_ixs.shape[0]]

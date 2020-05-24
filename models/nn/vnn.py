@@ -707,8 +707,8 @@ class ConvFrameMaskDecoderProgressMonitor(nn.Module):
         mask_t = self.mask_dec(cont_t)
 
         # predict subgoals completed and task progress
-        subgoal_t = F.sigmoid(self.subgoal(cont_t))
-        progress_t = F.sigmoid(self.progress(cont_t))
+        subgoal_t = torch.sigmoid(self.subgoal(cont_t))
+        progress_t = torch.sigmoid(self.progress(cont_t))
 
         return action_t, mask_t, state_t, lang_attn_t, subgoal_t, progress_t
 

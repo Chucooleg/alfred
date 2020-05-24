@@ -104,15 +104,19 @@ if __name__ == '__main__':
     M = import_module('model.{}'.format(args.model))
     if args.resume:
         print("Loading: " + args.resume)
-        model, optimizer, start_epoch = M.Module.load(args.resume)
-        print("Restarting at epoch {}/{}".format(start_epoch, args.epoch-1))
-        if start_epoch >= args.epoch:
-            print('Checkpoint already finished {}/{} epochs.'.format(start_epoch, args.epoch))
+        model, optimizer, start_epoch, start_iters = M.Module.load(args.resume)
+        end_epoch = args.epoch
+        if start_epoch >= end_epoch:
+            print('Checkpoint already finished {}/{} epochs.'.format(start_epoch, end_epoch))
             sys.exit(0)
+        else:
+            print("Restarting at epoch {}/{}".format(start_epoch, end_epoch-1))
     else:
         model = M.Module(args, vocab, object_vocab)
         optimizer = None
         start_epoch = 0
+        start_iters = None
+        end_epoch = args.epoch
 
     # to gpu
     if args.gpu:
@@ -121,4 +125,4 @@ if __name__ == '__main__':
             optimizer_to(optimizer, torch.device('cuda'))
 
     # start train loop
-    model.run_train(splits, optimizer=optimizer, start_epoch=start_epoch)
+    model.run_train(splits, optimizer=optimizer, start_epoch=start_epoch, end_epoch=end_epoch, start_iters=start_iters)
