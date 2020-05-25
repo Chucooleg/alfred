@@ -273,7 +273,7 @@ class Module(Base):
                     for batch_i in range(batch_size):
                         if isinstance(v[subgoal_i][batch_i], type(None)):
                             seqs.append(empty_tensor)
-                            seq_lengths.append(1) # TODO not sure if this works downstream 
+                            seq_lengths.append(1)
                         else:
                             seqs.append(torch.tensor(v[subgoal_i][batch_i], device=device))
                             seq_lengths.append(len(v[subgoal_i][batch_i]))

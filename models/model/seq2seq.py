@@ -53,7 +53,7 @@ class Module(nn.Module):
         for k in metrics.keys():
             self.summary_writer.add_scalar('{}/{}_{}_{}'.format(split_name, prefix, k, suffix), metrics[k], ix)
 
-    def run_train(self, splits, args=None, optimizer=None, start_epoch=0, end_epoch=50 ,start_iters=None):
+    def d(self, splits, args=None, optimizer=None, start_epoch=0, end_epoch=50 ,start_iters=None):
         '''
         training loop
         '''
@@ -111,9 +111,6 @@ class Module(nn.Module):
             train_sanity_iter = start_iters['train_sanity_iter']
             valid_seen_iter = start_iters['valid_seen_iter']
             valid_unseen_iter = start_iters['valid_unseen_iter']
-
-        # TODO DELETE THIS LINE
-        train_iter, train_sanity_iter, valid_seen_iter, valid_unseen_iter = 624500, 7400, 7400, 7400
         
         for epoch in trange(start_epoch, end_epoch, desc='epoch'):
             # time
@@ -678,14 +675,9 @@ class Module(nn.Module):
         model.load_state_dict(save['model'])
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
         optimizer.load_state_dict(save['optim'])
-
         # handle iter and epoch 
-        next_epoch = int(save['epoch']) + 1
-        
-        # TODO delete this line
-        next_iters = None
-        # next_iters = save['iters']
-
+        next_epoch = int(save['epoch']) + 1        
+        next_iters = save['iters']
         return model, optimizer, next_epoch, next_iters
 
     @classmethod
