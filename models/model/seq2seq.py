@@ -53,7 +53,7 @@ class Module(nn.Module):
         for k in metrics.keys():
             self.summary_writer.add_scalar('{}/{}_{}_{}'.format(split_name, prefix, k, suffix), metrics[k], ix)
 
-    def d(self, splits, args=None, optimizer=None, start_epoch=0, end_epoch=50 ,start_iters=None):
+    def run_train(self, splits, args=None, optimizer=None, start_epoch=0, end_epoch=50 ,start_iters=None):
         '''
         training loop
         '''

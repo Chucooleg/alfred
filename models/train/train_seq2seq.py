@@ -47,6 +47,7 @@ if __name__ == '__main__':
     parser.add_argument('--encoder_addons', type=str, default='none', choices=['none', 'max_pool_obj', 'biattn_obj'])
     parser.add_argument('--decoder_addons', type=str, default='none', choices=['none', 'aux_loss'])
     parser.add_argument('--object_repr', type=str, default='type', choices=['type', 'instance'])
+    parser.add_argument('--reweight_aux_bce', help='reweight binary CE for auxiliary tasks', action='store_true')
 
     # dropouts
     parser.add_argument('--zero_goal', help='zero out goal language', action='store_true')

@@ -59,6 +59,7 @@ class Module(Base):
         # language decoder
         if self.decoder_addons == 'aux_loss':
             self.aux_loss_over_object_states = True
+            self.reweight_aux_bce = args.reweight_aux_bce
         else: # 'none'
             self.aux_loss_over_object_states = False
         
@@ -519,6 +520,8 @@ class Module(Base):
                     task_id_ann = self.get_task_and_ann_id(ex)
                     # (num_objects in task,)
                     valid_ixs = get_non_zero_elements(valid_ixs)
+                    pred[task_id_ann]['obj_token_id'][subgoal_i] = valid_ixs
+                    # (num_objects in task,)
                     pred[task_id_ann]['p_obj_vis'][subgoal_i] = torch.sigmoid(p_vis[:valid_ixs.shape[0]])
                     pred[task_id_ann]['p_state_change'][subgoal_i] = torch.sigmoid(p_sc[:valid_ixs.shape[0]])
                     # (num_objects in task,)
@@ -582,11 +585,25 @@ class Module(Base):
         # (B, max num objects in batch)
         loss_full = self.aux_criterion(input=predicted_scores, target=targets)
         loss_full *= pad_valids
-        # (B, ) 
-        loss_per_task = torch.div(torch.sum(loss_full, dim=1), torch.max(torch.sum(pad_valids, dim=1), torch.tensor([1], dtype=torch.float, device=device))) 
 
-        # scalar, scalar
+        if self.reweight_aux_bce:
+            # (B, max num objects in batch)
+            loss_pos = targets * loss_full
+            loss_neg = (1.0 - targets) * loss_full
+            # (B, ) 
+            loss_per_task_pos = torch.div(torch.sum(loss_pos, dim=1), torch.max(torch.sum(targets*pad_valids, dim=1), torch.tensor([1], dtype=torch.float, device=device)))
+            loss_per_task_neg = torch.div(torch.sum(loss_neg, dim=1), torch.max(torch.sum((1.0 - targets)*pad_valids, dim=1), torch.tensor([1], dtype=torch.float, device=device)))
+            # (B, ) 
+            loss_per_task = (loss_per_task_pos + loss_per_task_neg) / 2
+        else:
+            # (B, ) 
+            loss_per_task = torch.div(
+                torch.sum(loss_full, dim=1), 
+                torch.max(torch.sum(pad_valids, dim=1), torch.tensor([1], dtype=torch.float, device=device))) 
+
+            # scalar, scalar
         return torch.sum(loss_per_task), num_valid_tasks
+
 
     def compute_loss(self, out, batch, feat):
         '''
@@ -659,6 +676,36 @@ class Module(Base):
         fn = (pred_bool == 0) * gt
         return acc, tp, fp, fn
 
+    def classify_type_preds(self, pred, gt, obj_tokens, thresh=0.5):
+        '''
+        Compute type version for metrics.
+        pred : shape (num objects in the task,)
+        gt   : shape (num objects in the task,)
+        obj_type : shape (num objects in the task,)
+        '''
+        pred_bool = (pred > 0.5).cpu().numpy()
+        gt = gt.cpu().numpy()
+        obj_tokens = obj_tokens.cpu().numpy()
+        
+        obj_types = list(set(obj_tokens))
+        obj_type_pred = []
+        obj_type_gt = []
+        
+        for obj_type in obj_types:
+            typ_positions = np.squeeze(np.argwhere(obj_tokens == obj_type))
+            obj_type_pred.append(np.any(pred_bool[typ_positions]))
+            obj_type_gt.append(np.any(gt[typ_positions]))
+            
+        obj_type_pred = np.array(obj_type_pred)
+        obj_type_gt = np.array(obj_type_gt)
+        
+        acc = obj_type_pred == obj_type_gt
+        tp = obj_type_pred * obj_type_gt
+        fp = obj_type_pred * (obj_type_gt == 0)
+        fn = (obj_type_pred == 0) * obj_type_gt
+
+        return acc, tp, fp, fn
+
     @torch.no_grad()
     def compute_metric(self, preds, data):
         '''
@@ -672,12 +719,10 @@ class Module(Base):
         all_pred_id_ann = list(preds.keys())
 
         # Book keeping to compute Precision and Recall
-        TP_VIS_ALL = []
-        TP_STC_ALL = []
-        FP_VIS_ALL = []
-        FP_STC_ALL = []
-        FN_VIS_ALL = []
-        FN_STC_ALL = []
+        TP_VIS_ALL, TP_STC_ALL, FP_VIS_ALL, FP_STC_ALL, FN_VIS_ALL, FN_STC_ALL = \
+                [], [], [], [], [], []
+        TYP_TP_VIS_ALL, TYP_TP_STC_ALL, TYP_FP_VIS_ALL, TYP_FP_STC_ALL, TYP_FN_VIS_ALL, TYP_FN_STC_ALL = \
+                    [], [], [], [], [], []
 
         for task in data:
             
@@ -705,10 +750,12 @@ class Module(Base):
             if self.aux_loss_over_object_states:
 
                 for subgoal_i in range(num_subgoals):
+                    obj_type = preds[pred_id_ann]['obj_token_id'][subgoal_i]
                     pred_vis = preds[pred_id_ann]['p_obj_vis'][subgoal_i]
                     gt_vis = preds[pred_id_ann]['l_obj_vis'][subgoal_i]
                     pred_stc = preds[pred_id_ann]['p_state_change'][subgoal_i]
                     gt_stc = preds[pred_id_ann]['l_state_change'][subgoal_i]
+
                     # Accuracy, TP, FP, FN
                     # each array (num objects in task)
                     acc_vis, tp_vis, fp_vis, fn_vis = self.classify_preds(pred_vis, gt_vis)
@@ -722,6 +769,20 @@ class Module(Base):
                     FP_STC_ALL.extend(fp_stc)
                     FN_VIS_ALL.extend(fn_vis)
                     FN_STC_ALL.extend(fn_stc)
+
+                    if self.object_repr == 'instance':
+                        # compute for 'type' as well
+                        typ_acc_vis, typ_tp_vis, typ_fp_vis, typ_fn_vis = self.classify_type_preds(pred_stc, gt_stc, obj_type)
+                        typ_acc_stc, typ_tp_stc, typ_fp_stc, typ_fn_stc = self.classify_type_preds(pred_stc, gt_stc, obj_type)
+
+                        m['TYPE_ACC_VIS'].extend(typ_acc_vis)
+                        m['TYPE_ACC_STC'].extend(typ_acc_stc)
+                        TYP_TP_VIS_ALL.extend(typ_tp_vis)
+                        TYP_TP_STC_ALL.extend(typ_tp_stc)
+                        TYP_FP_VIS_ALL.extend(typ_fp_vis)
+                        TYP_FP_STC_ALL.extend(typ_fp_stc)
+                        TYP_FN_VIS_ALL.extend(typ_fn_vis)
+                        TYP_FN_STC_ALL.extend(typ_fn_stc)                 
 
             all_pred_id_ann.remove(pred_id_ann)
 
@@ -741,5 +802,20 @@ class Module(Base):
             
             m_out['TOTAL_COUNT_VIS'] = len(TP_VIS_ALL)
             m_out['TOTAL_COUNT_STC'] = len(TP_STC_ALL)
+
+            if self.object_repr == 'instance':
+                # report type as well      
+                m_out['TYPE_PRECISION_VIS'] = sum(TYP_TP_VIS_ALL) / (sum(TYP_TP_VIS_ALL) + sum(TYP_FP_VIS_ALL))
+                m_out['TYPE_RECALL_VIS'] = sum(TYP_TP_VIS_ALL) / (sum(TYP_TP_VIS_ALL) + sum(TYP_FN_VIS_ALL))
+                m_out['TYPE_PRECISION_STC'] = sum(TYP_TP_STC_ALL) / (sum(TYP_TP_STC_ALL) + sum(TYP_FP_STC_ALL))
+                m_out['TYPE_RECALL_STC'] = sum(TYP_TP_STC_ALL) / (sum(TYP_TP_STC_ALL) + sum(TYP_FN_STC_ALL))
+
+                m_out['TYPE_TOTAL_GT_STC'] = sum(TYP_TP_STC_ALL) + sum(TYP_FN_STC_ALL)
+                m_out['TYPE_TOTAL_PRED_STC'] = sum(TYP_TP_STC_ALL) + sum(TYP_FP_STC_ALL)
+                m_out['TYPE_TOTAL_GT_VIS'] = sum(TYP_TP_VIS_ALL) + sum(TYP_FN_VIS_ALL)
+                m_out['TYPE_TOTAL_PRED_VIS'] = sum(TYP_TP_VIS_ALL) + sum(TYP_FP_VIS_ALL)
+                
+                m_out['TYPE_TOTAL_COUNT_VIS'] = len(TYP_TP_VIS_ALL)
+                m_out['TYPE_TOTAL_COUNT_STC'] = len(TYP_TP_STC_ALL)  
             
         return m_out
