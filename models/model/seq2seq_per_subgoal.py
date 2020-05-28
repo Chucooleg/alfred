@@ -520,13 +520,13 @@ class Module(Base):
                     task_id_ann = self.get_task_and_ann_id(ex)
                     # (num_objects in task,)
                     valid_ixs = get_non_zero_elements(valid_ixs)
-                    pred[task_id_ann]['obj_token_id'][subgoal_i] = valid_ixs
+                    pred[task_id_ann]['obj_token_id'][subgoal_i] = valid_ixs.cpu().tolist()
                     # (num_objects in task,)
-                    pred[task_id_ann]['p_obj_vis'][subgoal_i] = torch.sigmoid(p_vis[:valid_ixs.shape[0]])
-                    pred[task_id_ann]['p_state_change'][subgoal_i] = torch.sigmoid(p_sc[:valid_ixs.shape[0]])
+                    pred[task_id_ann]['p_obj_vis'][subgoal_i] = torch.sigmoid(p_vis[:valid_ixs.shape[0]]).cpu().tolist()
+                    pred[task_id_ann]['p_state_change'][subgoal_i] = torch.sigmoid(p_sc[:valid_ixs.shape[0]]).cpu().tolist()
                     # (num_objects in task,)
-                    pred[task_id_ann]['l_obj_vis'][subgoal_i] = g_vis[last_t,:][:valid_ixs.shape[0]]
-                    pred[task_id_ann]['l_state_change'][subgoal_i] = g_sc[last_t,:][:valid_ixs.shape[0]]
+                    pred[task_id_ann]['l_obj_vis'][subgoal_i] = g_vis[last_t,:][:valid_ixs.shape[0]].cpu().tolist()
+                    pred[task_id_ann]['l_state_change'][subgoal_i] = g_sc[last_t,:][:valid_ixs.shape[0]].cpu().tolist()
 
                     ct_vis += torch.sum(g_vis[last_t,:][:valid_ixs.shape[0]]).cpu().item()
                     ct_stc += torch.sum(g_sc[last_t,:][:valid_ixs.shape[0]]).cpu().item()
@@ -595,6 +595,7 @@ class Module(Base):
             loss_per_task_neg = torch.div(torch.sum(loss_neg, dim=1), torch.max(torch.sum((1.0 - targets)*pad_valids, dim=1), torch.tensor([1], dtype=torch.float, device=device)))
             # (B, ) 
             loss_per_task = (loss_per_task_pos + loss_per_task_neg) / 2
+            # loss_per_task = (1.0*loss_per_task_pos + 2.0*loss_per_task_neg) / 3
         else:
             # (B, ) 
             loss_per_task = torch.div(
@@ -603,7 +604,6 @@ class Module(Base):
 
             # scalar, scalar
         return torch.sum(loss_per_task), num_valid_tasks
-
 
     def compute_loss(self, out, batch, feat):
         '''
@@ -668,8 +668,8 @@ class Module(Base):
         pred : shape (num objects in the task,)
         gt   : shape (num objects in the task,)
         '''
-        pred_bool = (pred > 0.5).cpu().numpy()
-        gt = gt.cpu().numpy()
+        pred_bool = (pred > 0.5)
+
         acc = pred_bool == gt
         tp = pred_bool * gt
         fp = pred_bool * (gt == 0)
@@ -683,9 +683,7 @@ class Module(Base):
         gt   : shape (num objects in the task,)
         obj_type : shape (num objects in the task,)
         '''
-        pred_bool = (pred > 0.5).cpu().numpy()
-        gt = gt.cpu().numpy()
-        obj_tokens = obj_tokens.cpu().numpy()
+        pred_bool = (pred > 0.5)
         
         obj_types = list(set(obj_tokens))
         obj_type_pred = []
@@ -750,11 +748,12 @@ class Module(Base):
             if self.aux_loss_over_object_states:
 
                 for subgoal_i in range(num_subgoals):
-                    obj_type = preds[pred_id_ann]['obj_token_id'][subgoal_i]
-                    pred_vis = preds[pred_id_ann]['p_obj_vis'][subgoal_i]
-                    gt_vis = preds[pred_id_ann]['l_obj_vis'][subgoal_i]
-                    pred_stc = preds[pred_id_ann]['p_state_change'][subgoal_i]
-                    gt_stc = preds[pred_id_ann]['l_state_change'][subgoal_i]
+                    # each array (num objects in task)
+                    obj_type = np.array(preds[pred_id_ann]['obj_token_id'][subgoal_i])
+                    pred_vis = np.array(preds[pred_id_ann]['p_obj_vis'][subgoal_i])
+                    gt_vis = np.array(preds[pred_id_ann]['l_obj_vis'][subgoal_i])
+                    pred_stc = np.array(preds[pred_id_ann]['p_state_change'][subgoal_i])
+                    gt_stc = np.array(preds[pred_id_ann]['l_state_change'][subgoal_i])
 
                     # Accuracy, TP, FP, FN
                     # each array (num objects in task)

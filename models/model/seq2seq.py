@@ -563,9 +563,15 @@ class Module(nn.Module):
                 # Input - High-level actions
                 'action_high': [a['discrete_action']['action'] for a in ex['plan']['high_pddl']],
                 # Predicted - Language
-                'p_lang_instr': preds[i]['lang_instr']
-                # 'p_action_low': preds[i]['lang_instr'].split(),
+                'p_lang_instr': preds[i]['lang_instr'],
             }
+            if self.aux_loss_over_object_states:
+                for k in [
+                    'obj_token_id', 'p_obj_vis', 'p_state_change',
+                    'l_obj_vis', 'l_state_change'
+                    ]:
+                    # convert numpy arrays to list
+                    debug[i][k] = preds[i][k]
         return debug
 
     def load_task_json(self, task):
@@ -665,12 +671,14 @@ class Module(nn.Module):
             param_group['lr'] = lr
 
     @classmethod
-    def load(cls, fsave):
+    def load(cls, fsave, overwrite_args):
         '''
         load pth model from disk
         '''
         save = torch.load(fsave)
         saved_args = save['args']
+        for k ,v in overwrite_args.items():
+            setattr(saved_args, k, v)
         model = cls(saved_args, save['vocab'], save['object_vocab'])
         model.load_state_dict(save['model'])
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)

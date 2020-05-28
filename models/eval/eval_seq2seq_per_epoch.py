@@ -48,6 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('--encoder_addons', type=str, default='none', choices=['none', 'max_pool_obj', 'biattn_obj'])
     parser.add_argument('--decoder_addons', type=str, default='none', choices=['none', 'aux_loss'])
     parser.add_argument('--object_repr', type=str, default='type', choices=['type', 'instance'])
+    parser.add_argument('--reweight_aux_bce', help='reweight binary CE for auxiliary tasks', action='store_true')
 
     # dropouts
     parser.add_argument('--zero_goal', help='zero out goal language', action='store_true')
@@ -88,13 +89,14 @@ if __name__ == '__main__':
     # load model
     M = import_module('model.{}'.format(args.model))
     
-    for epoch in range(33): # NOTE change epoch num and model location here.
-        resume_path = '/root/data/home/hoyeung/blob_alfred_data/exp_all/model:seq2seq_per_subgoal,name:v2_epoch_50_enc_max_pool_aux_loss/net_epoch_{}.pth'.format(epoch)
+    # for epoch in range(33): # NOTE change epoch num and model location here.
+    for epoch in [29]: # NOTE change epoch num and model location here.
+        resume_path = '/root/data/home/hoyeung/blob_alfred_data/exp_all/model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce/net_epoch_{}.pth'.format(epoch)
         print('resume path: {}'.format(resume_path))
-        model, _, _ = M.Module.load(resume_path, args)
+        model, optimizer, _, _ = M.Module.load(resume_path, {
+            'gpu':False, 'reweight_aux_bce':args.reweight_aux_bce, 'dout':args.dout})
         # to gpu
         if args.gpu:
             model = model.to(torch.device('cuda'))
-        
         # run evaluation
         m_train_sanity, m_valid_seen, m_valid_unseen = model.run_eval(splits, args=None, epoch=epoch)
