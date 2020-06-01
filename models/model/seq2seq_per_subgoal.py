@@ -594,8 +594,8 @@ class Module(Base):
             loss_per_task_pos = torch.div(torch.sum(loss_pos, dim=1), torch.max(torch.sum(targets*pad_valids, dim=1), torch.tensor([1], dtype=torch.float, device=device)))
             loss_per_task_neg = torch.div(torch.sum(loss_neg, dim=1), torch.max(torch.sum((1.0 - targets)*pad_valids, dim=1), torch.tensor([1], dtype=torch.float, device=device)))
             # (B, ) 
-            loss_per_task = (loss_per_task_pos + loss_per_task_neg) / 2
-            # loss_per_task = (1.0*loss_per_task_pos + 2.0*loss_per_task_neg) / 3
+            # loss_per_task = (loss_per_task_pos + loss_per_task_neg) / 2
+            loss_per_task = (1.0*loss_per_task_pos + 2.0*loss_per_task_neg) / 3
         else:
             # (B, ) 
             loss_per_task = torch.div(
@@ -681,7 +681,7 @@ class Module(Base):
         Compute type version for metrics.
         pred : shape (num objects in the task,)
         gt   : shape (num objects in the task,)
-        obj_type : shape (num objects in the task,)
+        obj_tokens : shape (num objects in the task,)
         '''
         pred_bool = (pred > 0.5)
         
@@ -771,7 +771,7 @@ class Module(Base):
 
                     if self.object_repr == 'instance':
                         # compute for 'type' as well
-                        typ_acc_vis, typ_tp_vis, typ_fp_vis, typ_fn_vis = self.classify_type_preds(pred_stc, gt_stc, obj_type)
+                        typ_acc_vis, typ_tp_vis, typ_fp_vis, typ_fn_vis = self.classify_type_preds(pred_vis, pred_vis, obj_type)
                         typ_acc_stc, typ_tp_stc, typ_fp_stc, typ_fn_stc = self.classify_type_preds(pred_stc, gt_stc, obj_type)
 
                         m['TYPE_ACC_VIS'].extend(typ_acc_vis)

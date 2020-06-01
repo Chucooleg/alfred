@@ -286,6 +286,8 @@ class ActionFrameAttnEncoderPerSubgoalObjAttn(ActionFrameAttnEncoderPerSubgoal):
     def filter_obj_embeds(self, object_indices, object_boolean_features, receptacle_indices=None, object_distances=None):
         '''
         make continuous repr for object embeddding, visibility and state change.
+        object_indices: (B, t, max_num_objects in batch)
+        object_boolean_features: (B, t, max_num_objects in batch) 
         '''
         if self.object_repr == 'instance':
             # (B, t, max_num_objects in batch, dhid)

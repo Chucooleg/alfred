@@ -90,11 +90,11 @@ if __name__ == '__main__':
     M = import_module('model.{}'.format(args.model))
     
     # for epoch in range(33): # NOTE change epoch num and model location here.
-    for epoch in [29]: # NOTE change epoch num and model location here.
-        resume_path = '/root/data/home/hoyeung/blob_alfred_data/exp_all/model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce/net_epoch_{}.pth'.format(epoch)
+    for epoch in [32]: # NOTE change epoch num and model location here.
+        resume_path = '/root/data/home/hoyeung/blob_alfred_data/exp_all/model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce_1to2/net_epoch_{}.pth'.format(epoch)
         print('resume path: {}'.format(resume_path))
         model, optimizer, _, _ = M.Module.load(resume_path, {
-            'gpu':False, 'reweight_aux_bce':args.reweight_aux_bce, 'dout':args.dout})
+            'gpu':True, 'reweight_aux_bce':args.reweight_aux_bce, 'dout':args.dout}) # NOTE update these args
         # to gpu
         if args.gpu:
             model = model.to(torch.device('cuda'))
