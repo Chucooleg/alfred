@@ -39,8 +39,8 @@ class DotAttn(nn.Module):
         # (B, t, 1)
         score = self.softmax(inp, h)
         # (B, t, 2*args.dhid) element multiply (B, t, 2*args.dhid) = (B, t, 2*args.dhid)
-        # sum(B, t, 2*args.dhid, dim=1) = (B, 2*args.dhid, dim=1)
-        # (B, 2*args.dhid, dim=1), (B, t, 1)
+        # sum(B, t, 2*args.dhid, dim=1) = (B, 2*args.dhid)
+        # (B, 2*args.dhid), (B, t, 1)
         return score.expand_as(inp).mul(inp).sum(1), score
 
     def softmax(self, inp, h):
@@ -48,6 +48,31 @@ class DotAttn(nn.Module):
         raw_score = inp.bmm(h.unsqueeze(2))
         # (B, t, 1)
         score = F.softmax(raw_score, dim=1)
+        return score
+
+
+class DotSigmoidAttn(nn.Module):
+    '''
+    dot-attention (or soft-attention) with sigmoid
+    '''
+
+    def forward(self, inp, h):
+        '''
+        inp: shape (B, t, args.dhid)
+        h: (B, args.dhid)
+        '''
+        # (B, t, 1)
+        score = self.sigmoid(inp, h)
+        # (B, t, args.dhid) element multiply (B, t, args.dhid) = (B, t, args.dhid)
+        # max(B, t, args.dhid, dim=1) = (B, args.dhid)
+        # (B, args.dhid), (B, t, 1)
+        return score.expand_as(inp).mul(inp).max(1)[0], score
+
+    def sigmoid(self, inp, h):
+        # (B, t, args.dhid) mm (B, args.dhid, 1) = (B, t, 1)
+        raw_score = inp.bmm(h.unsqueeze(2))
+        # (B, t, 1)
+        score = torch.sigmoid(raw_score)
         return score
 
 
@@ -273,7 +298,9 @@ class ActionFrameAttnEncoderPerSubgoalObjAttn(ActionFrameAttnEncoderPerSubgoal):
 
         # object states handling
         # dhid to dhid
-        self.obj_attn = DotAttn()
+        # self.obj_attn = DotAttn()
+        self.obj_attn = DotSigmoidAttn()
+
         # linear for hidden state before attention
         self.h_tm1_fc = nn.Linear(dhid, dhid)
 
