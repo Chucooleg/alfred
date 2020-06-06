@@ -14,3 +14,4 @@ phillytools/
 *.old
 *.log
 *.conf
+*.pddl
