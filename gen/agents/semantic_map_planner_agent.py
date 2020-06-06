@@ -15,8 +15,18 @@ class SemanticMapPlannerAgent(AgentBase):
         self.planning = False
 
     def reset(self, seed=None, info=None, scene=None, objs=None):
+        '''
+        scene: {'scene_num': sampled_scene, 'random_seed': random.randint(0, 2 ** 32)}
+        objs: {'repeat':[('Apple', 2), ('Pan', 4), ...], 'sparse':[]}
+        '''
         self.planning = False
+        # task_game_state.py def get_random_task_vals 
+        # (dataset_type, task_row), max_num_repeats, remove_prob
+        # ('train', '9999'), 3, 0.0
         info = self.game_state.get_setup_info(info, scene=scene)[0]
+        # {'seed': 998, info: (('train', '9999'), 3, 0.0)}
+        # scene = {'scene_num': sampled_scene, 'random_seed': random.randint(0, 2 ** 32)}
+        # objs = {'repeat': [], 'sparse':[], 'empty':[], 'seton':[]}
         super(SemanticMapPlannerAgent, self).reset({'seed': seed, 'info': info}, scene=scene, objs=objs)
         if self.plan_agent is not None:
             self.plan_agent.reset()
