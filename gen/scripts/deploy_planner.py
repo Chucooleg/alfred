@@ -58,7 +58,7 @@ def print_successes(succ_traj):
     print("\n##################################")
 
 
-def main(args, sampled_task=('pick_two_obj_and_place', 'Watch', 'None', 'Dresser', 205)):
+def main(args, sampled_task=('pick_two_obj_and_place', 'Watch', 'None', 'Dresser', 205), obj_repeats_var=3, seed_var=42):
     # settings
     constants.DATA_SAVE_PATH = args.save_path
     print("Force Unsave Data: %s" % str(args.force_unsave))
@@ -164,7 +164,7 @@ def main(args, sampled_task=('pick_two_obj_and_place', 'Watch', 'None', 'Dresser
         constants.pddl_goal_type = gtype
         print("PDDLGoalType: " + constants.pddl_goal_type)
         # create save dir 'dataset/new_trajectories/pick_two_obj_and_place-Watch-None-Dresser-205/trial_T20190907_181954_161870/raw_images/
-        task_id, task_name, task_path = create_dirs(gtype, pickup_obj, movable_obj, receptacle_obj, sampled_scene)
+        task_id, task_name, task_path = create_dirs(gtype, pickup_obj, movable_obj, receptacle_obj, sampled_scene, obj_repeats_var, seed_var)
 
         # setup data dictionary
         setup_data_dict()
@@ -198,7 +198,7 @@ def main(args, sampled_task=('pick_two_obj_and_place', 'Watch', 'None', 'Dresser
                     # constraint_objs['repeat'].append((obj_type,
                     #                                     np.random.randint(1, constants.MAX_NUM_OF_OBJ_INSTANCES + 1)))
                     constraint_objs['repeat'].append((obj_type,
-                                                        9))
+                                                      obj_repeats_var))
 
             if gtype in goal_to_invalid_receptacle:
                 constraint_objs['empty'] = [(r.replace('Basin', ''), num_place_fails * constants.RECEPTACLE_EMPTY_POINTS)
@@ -220,7 +220,8 @@ def main(args, sampled_task=('pick_two_obj_and_place', 'Watch', 'None', 'Dresser
             # returns:
             # (dataset_type, task_row), max_num_repeats for object type, remove_prob
             # ('train', '9999'), 3, 0.0       
-            scene_info = {'scene_num': sampled_scene, 'random_seed': random.randint(0, 2 ** 32)}
+            # scene_info = {'scene_num': sampled_scene, 'random_seed': random.randint(0, 2 ** 32)}
+            scene_info = {'scene_num': sampled_scene, 'random_seed': seed_var}
             info = agent.reset(scene=scene_info,
                                 objs=constraint_objs)
 
@@ -285,6 +286,7 @@ def main(args, sampled_task=('pick_two_obj_and_place', 'Watch', 'None', 'Dresser
             save_video()
 
             successful_task_paths.append(task_path)
+            tries_remaining -= 1
 
         except Exception as e:
             import traceback
@@ -328,11 +330,16 @@ def main(args, sampled_task=('pick_two_obj_and_place', 'Watch', 'None', 'Dresser
                 print("\t(%.2f) (%d)\t%s" % (v / es, v, er))
             print("%%%%%%%%%%")
 
+            # for debugging
+            # delete_save(False)
+            save_video()
+
             continue
 
-        if args.force_unsave:
-            # delete_save(args.in_parallel)
-            delete_save(False)
+        # if args.force_unsave:
+        #     # delete_save(args.in_parallel)
+        #     delete_save(False)
+
 
         # add to save structure.
         # succ_traj = succ_traj.append({
@@ -384,10 +391,10 @@ def main(args, sampled_task=('pick_two_obj_and_place', 'Watch', 'None', 'Dresser
     #         print("... Created fresh instance of sample_task_params generator")
 
 
-def create_dirs(gtype, pickup_obj, movable_obj, receptacle_obj, scene_num):
+def create_dirs(gtype, pickup_obj, movable_obj, receptacle_obj, scene_num, obj_repeats_var, seed_var):
     task_id = 'trial_T' + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     task_name = '%s-%s-%s-%s-%d' % (gtype, pickup_obj, movable_obj, receptacle_obj, scene_num)
-    save_name = task_name + '/' + task_id
+    save_name = task_name + '/' + f'seed_{seed_var}_repeat_{obj_repeats_var}/' + task_id
 
     constants.save_path = os.path.join(constants.DATA_SAVE_PATH, save_name, RAW_IMAGES_FOLDER)
     if not os.path.exists(constants.save_path):
