@@ -462,7 +462,7 @@ if __name__ == "__main__":
     # settings
     parser.add_argument('--force_unsave', action='store_true', help="don't save any data (for debugging purposes)")
     parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--save_path', type=str, default="/root/data_alfred/dummy/", help="where to save the generated data")
+    parser.add_argument('--save_path', type=str, default="/root/data_alfred/demo_generated/", help="where to save the generated data")
     parser.add_argument('--x_display', type=str, required=False, default=constants.X_DISPLAY, help="x_display id")
     # parser.add_argument("--just_examine", action='store_true', help="just examine what data is gathered; don't gather more")
     # parser.add_argument("--in_parallel", action='store_true', help="this collection will run in parallel with others, so load from disk on every new sample")
