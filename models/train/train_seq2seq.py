@@ -22,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('--splits', help='json file containing train/dev/test splits', default='data/splits/may17.json')
     parser.add_argument('--preprocess', help='store preprocessed data to json files', action='store_true')
     parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
-    parser.add_argument('--object_vocab', help='object_vocab version', default='object')
+    parser.add_argument('--object_vocab', help='object_vocab version', help='should be file with .object_vocab ending')
     parser.add_argument('--save_every_epoch', help='save model after every epoch (warning: consumes a lot of space)', action='store_true')
     parser.add_argument('--model', help='model to use', default='seq2seq_nl_baseline')
     parser.add_argument('--gpu', help='use gpu', action='store_true')
@@ -99,7 +99,7 @@ if __name__ == '__main__':
         vocab = torch.load(os.path.join(args.data, "%s.vocab" % args.pp_folder))
 
     # TODO hacky -- incorporate into preprocessing
-    object_vocab = torch.load(os.path.join(args.data, '%s.vocab' % args.object_vocab))
+    object_vocab = torch.load(os.path.join(args.data, '%s' % args.object_vocab)) # should be file with .object_vocab ending.
 
     # load model
     M = import_module('model.{}'.format(args.model))

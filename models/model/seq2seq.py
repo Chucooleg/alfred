@@ -422,7 +422,7 @@ class Module(nn.Module):
             valid_unseen = valid_unseen[:16]
 
         # display dout
-        print("Saving to: %s" % self.args.dout)
+        print("Saving model predictions to: %s" % self.args.dout)
 
         #-------------------------------------------------------
         # compute metrics for train_sanity, teacher-forcing
