@@ -1,12 +1,14 @@
 import os
 import shutil
 
-
+# example:
+# load_successes_from_disk(args.save_path, succ_traj, args.just_examine, args.repeats_per_cond)
 def load_successes_from_disk(succ_dir, succ_traj, prune_trials, target_count,
                              cap_count=None, min_count=None):
     tuple_counts = {}
     for root, dirs, files in os.walk(succ_dir):
         for d in dirs:
+            # d is pick_two_obj_and_place-Watch-None-Dresser-301
             if d.count('-') == 4:
                 goal, pickup, movable, receptacle, scene_num = d.split('-')
                 # Add an entry for every successful trial folder in the directory.

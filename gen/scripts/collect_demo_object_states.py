@@ -1,0 +1,411 @@
+import os
+import sys
+sys.path.append(os.path.join(os.environ['ALFRED_ROOT']))
+sys.path.append(os.path.join(os.environ['ALFRED_ROOT'], 'gen'))
+sys.path.append(os.path.join(os.environ['ALFRED_ROOT'], 'models'))
+
+import torch
+import pprint
+import json
+from data.preprocess import Dataset
+from importlib import import_module, reload
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from models.utils.helper_utils import optimizer_to
+from gen.utils.image_util import decompress_mask as util_decompress_mask
+import gen.constants as constants
+
+import numpy as np
+from PIL import Image
+from datetime import datetime
+from eval.eval import Eval
+from env.thor_env import ThorEnv
+from eval.eval_task import EvalTask
+from collections import defaultdict
+import logging
+import progressbar
+
+def load_task_json(task):
+    '''
+    load preprocessed json from disk
+    '''
+    # e.g. /root/data_alfred/demo_generated/new_trajectories_debug_sampler_20200611/pick_two_obj_and_place-Watch-None-Dresser-205/trial_T20200611_235502_613792/traj_data.json
+    json_path = os.path.join(args.data, task['task_type'], task['task_id'], 'traj_data.json')
+
+    with open(json_path) as f:
+        data = json.load(f)
+    return data
+
+def decompress_mask(compressed_mask):
+    '''
+    decompress mask from json files
+    '''
+    mask = np.array(util_decompress_mask(compressed_mask))
+    mask = np.expand_dims(mask, axis=0)
+    return mask
+
+def CollectStates(EvalTask):
+
+    object_state_list = ['isToggled', 'isBroken', 'isFilledWithLiquid', 'isDirty',
+                  'isUsedUp', 'isCooked', 'ObjectTemperature', 'isSliced',
+                  'isOpen', 'isPickedUp', 'mass', 'receptacleObjectIds']
+
+    object_symbol_list = constants.OBJECTS
+
+    non_interact_actions = ['MoveAhead', 'Rotate', 'Look', '<<stop>>', '<<pad>>', '<<seg>>']
+
+    @classmethod
+    def get_object_list(cls, traj_data):
+        object_list = [ob['objectName'] for ob in traj_data['scene']['object_poses']]
+        for ob in object_list:
+            assert ob.split('_')[0] in constants.OBJECTS
+        return object_list
+
+    @classmethod
+    def get_object_states(cls, metadata):
+        object_states = defaultdict(dict)
+        for ob in metadata['objects']:
+            symbol = ob['name'].split('_')[0]
+            # assert symbol in cls.object_symbol_list
+            object_states[ob['name']]['symbol'] = symbol
+            object_states[ob['name']]['states'] = {state:ob[state] for state in cls.object_state_list}
+            object_states[ob['name']]['states']['parentReceptacles'] = ob['parentReceptacles'][0].split('|')[0] if ob['parentReceptacles'] is not None else None
+        return object_states
+
+    @classmethod    
+    def divide_objects_by_change(cls, object_states_curr, object_states_last):
+        objects_unchanged = []
+        objects_changed = []
+        for ob_name in object_states_last.keys():
+            changed = False
+            for state in cls.object_state_list + ['parentReceptacles']:
+                if state in object_states_last[ob_name]['states'].keys():
+                    if object_states_last[ob_name]['states'][state] != object_states_curr[ob_name]['states'][state]:
+                        changed = True
+            if changed == False:
+                objects_unchanged.append(ob_name)
+            else:
+                objects_changed.append(ob_name)
+        return objects_changed, objects_unchanged
+
+    @classmethod  
+    def get_unchanged_symbols(cls, objects_changed, objects_unchanged, symbol_set):
+        objects_symbols_changed = [ob_name.split('_')[0] for ob_name in objects_changed]
+        objects_symbols_unchanged = [ob_name.split('_')[0] for ob_name in objects_unchanged]
+        return list((set(objects_symbols_unchanged) - set(objects_symbols_changed)) & symbol_set)
+
+    @classmethod
+    def get_object_symbols_present_in_scene(cls, traj_data):
+        object_list = [ob['objectName'] for ob in traj_data['scene']['object_poses']]
+        extracted_symbols = [ob.split('_')[0] for ob in object_list]
+        # for symbol in extracted_symbols:
+        #     assert symbol in cls.object_symbol_list
+        return extracted_symbols
+
+    @classmethod
+    def get_receptacle_symbols_present_in_scene(cls, metadata):
+        receptacle_list = [ob['name'] for ob in metadata['objects'] if ob['receptacle']]
+        extracted_symbols = [ob.split('_')[0] for ob in receptacle_list]
+        return extracted_symbols
+
+    @classmethod
+    def get_visibility(cls, metadata, object_symbols, receptacle_symbols):
+        visible_objects = {ob:False for ob in object_symbols}
+        visible_receptacles = {recp:False for recp in receptacle_symbols}
+        for ob in metadata['objects']:
+            if ob['visible']:
+                symbol = ob['name'].split('_')[0]
+                if ob['receptacle']:
+                    visible_receptacles[symbol] = True
+                else:
+                    visible_objects[symbol] = True
+        return [ob for ob in visible_objects.keys() if visible_objects[ob]], [recp for recp in visible_receptacles.keys() if visible_receptacles[recp]]    
+
+    @classmethod
+    # add lock back
+    def evaluate(cls, args, env, split_name, traj_data, success_log_entries, fail_log_entries, results, logger):
+
+        # setup scene
+        reward_type = 'dense'
+        cls.setup_scene(env, traj_data, r_idx, args, reward_type=reward_type)
+
+        # --------------- collect actions -----------------
+        # ground-truth low-level actions
+        # e.g. ['LookDown_15', 'MoveAhead_25', 'MoveAhead_25', ... '<<stop>>']
+        groundtruth_action_low = [a['discrete_action']['action'] for a in traj_data['plan']['low_actions']]
+        groundtruth_action_low.append(cls.STOP_TOKEN)
+
+        # get low-level action to high subgoal alignment
+        # get valid interaction per low-level action
+        # get interaction mask if any
+        end_action = {
+            'api_action': {'action': 'NoOp'},
+            'discrete_action': {'action': '<<stop>>', 'args': {}},
+            'high_idx': ex['plan']['high_pddl'][-1]['high_idx']
+        }
+        # e.g. [0,0,0, ... , 11], lenght = total T
+        groundtruth_subgoal_alignment = []
+        # e.g. [0,1,0, ... , 1], lenght = total T
+        groundtruth_valid_interacts = []
+        # len=num timestep with valid interact, np shape (1 , 300 , 300)
+        groundtruth_low_mask = []
+        for a in (ex['plan']['low_actions'] + [end_action]):
+            # high-level action index (subgoals)
+            groundtruth_subgoal_alignment.append(a['high_idx'])
+            # interaction validity
+            groundtruth_valid_interacts.append(1 if a['discrete_action']['action'] in cls.non_interact_actions else 0)
+            # interaction mask values
+            if 'mask' in a.keys() and a['mask'] is not None:
+                groundtruth_low_mask.append(decompress_mask(a['mask']))
+
+        # ground-truth high-level subgoals
+        # e.g. ['GotoLocation', 'PickupObject', 'SliceObject', 'GotoLocation', 'PutObject', ... 'NoOp']
+        groundtruth_action_high = [a['discrete_action']['action'] for a in traj_data['plan']['high_pddl']]
+        
+        assert len(groundtruth_action_low) == len(groundtruth_subgoal_alignment) == len(groundtruth_valid_interacts)
+        assert len(groundtruth_action_high) == groundtruth_subgoal_alignment[-1] + 1
+        assert sum(groundtruth_valid_interacts) == len(groundtruth_low_mask)
+
+        # -------------------------------------------------
+        # --------------- execute actions -----------------
+
+        # initialize state dictionary for all timesteps
+        states = []
+
+        # get symbols and initial object states
+        event = env.last_event
+        obj_symbol_set = set(cls.get_object_symbols_present_in_scene(traj_data))
+        receptacle_symbol_set = set(cls.get_receptacle_symbols_present_in_scene(event.metadata))
+        object_states_last = cls.get_object_states(event.metadata) # includes receptacles
+
+        # loop through actions and execute them in the sim env
+        done, success = False, False
+        fails = 0
+        t = 0
+        reward = 0
+        action, mask = None, None
+        interact_ct = 0
+        high_idx = -1
+        while not done:            
+            # if last action was stop, break
+            if action == cls.STOP_TOKEN:
+                done = True
+                logging.info("predicted STOP")
+                break
+            
+            # transition to next subgoal
+            if high_idx < groundtruth_subgoal_alignment[t]:
+                high_idx = groundtruth_subgoal_alignment[t]
+                object_states_curr = cls.get_object_states(event.metadata)
+                visible_objects, visible_receptacles = cls.get_visibility(event.metadata, obj_symbol_set, receptacle_symbol_set)
+                objects_changed, objects_unchanged = cls.divide_objects_by_change(object_states_curr, object_states_last)
+                states.append({
+                    'time_step': t,
+                    'raw_object_metadata': event.metadata['objects'],
+                    'receptacle_states_delta': cls.get_unchanged_symbols(objects_changed, objects_unchanged, receptacle_symbol_set),
+                    'object_states_delta': cls.get_unchanged_symbols(objects_changed, objects_unchanged, obj_symbol_set),
+                    'visible_objects': visible_objects,
+                    'visible_receptacles': visible_receptacles,
+                    'subgoals': groundtruth_action_high[high_idx]
+                })
+                object_states_last = object_states_curr
+            
+            # collect groundtruth action and mask
+            # single string
+            action = groundtruth_action_low[t]
+            # expect (300, 300)
+            if groundtruth_valid_interacts[t]:
+                mask = groundtruth_low_mask[interact_ct][0]
+                interact_ct += 1
+            else:
+                mask = None
+
+            # interact with the env
+            t_success, event, _, err, _ = env.va_interact(action, interact_mask=mask, smooth_nav=args.smooth_nav, debug=args.debug)
+            if not t_success:
+                fails += 1
+                if fails >= args.max_fails:
+                    logging.info("Interact API failed %d times" % fails + "; latest error '%s'" % err)
+                    break            
+ 
+            # next time-step
+            t_reward, t_done = env.get_transition_reward()
+            reward += t_reward
+            t += 1
+        
+        # make sure we have used all masks
+        assert interact_ct == sum(groundtruth_valid_interacts)
+        
+        # check if goal was satisfied
+        goal_satisfied = env.get_goal_satisfied()
+        if goal_satisfied:
+            print("Goal Reached")
+            success = True
+        assert success       
+
+        # -------------------------------------------------
+        # ------debug execution success rate --------------
+        if args.debug:
+
+            # goal_conditions
+            pcs = env.get_goal_conditions_met()
+            goal_condition_success_rate = pcs[0] / float(pcs[1])
+
+            # SPL
+            path_len_weight = len(traj_data['plan']['low_actions'])
+            s_spl = (1 if goal_satisfied else 0) * min(1., path_len_weight / float(t))
+            pc_spl = goal_condition_success_rate * min(1., path_len_weight / float(t))
+
+            # path length weighted SPL
+            plw_s_spl = s_spl * path_len_weight
+            plw_pc_spl = pc_spl * path_len_weight
+            
+            
+            log_entry = {'trial': traj_data['task_id'],
+                        'type': traj_data['task_type'],
+                        'repeat_idx': int(r_idx),
+                        'goal_instr': goal_instr,
+                        'completed_goal_conditions': int(pcs[0]),
+                        'total_goal_conditions': int(pcs[1]),
+                        'goal_condition_success': float(goal_condition_success_rate),
+                        'success_spl': float(s_spl),
+                        'path_len_weighted_success_spl': float(plw_s_spl),
+                        'goal_condition_spl': float(pc_spl),
+                        'path_len_weighted_goal_condition_spl': float(plw_pc_spl),
+                        'path_len_weight': int(path_len_weight),
+                        'reward': float(reward)}
+            if success:
+                success_log_entries.append(log_entry)
+            else:
+                fail_log_entries.append(log_entry)
+
+            # overall results
+            results['all'] = cls.get_metrics(successes, failures)
+
+            logging.info("-------------")
+            logging.info("SR: %d/%d = %.3f" % (results['all']['success']['num_successes'],
+                                        results['all']['success']['num_evals'],
+                                        results['all']['success']['success_rate']))
+            logging.info("GC: %d/%d = %.3f" % (results['all']['goal_condition_success']['completed_goal_conditions'],
+                                        results['all']['goal_condition_success']['total_goal_conditions'],
+                                        results['all']['goal_condition_success']['goal_condition_success_rate']))
+            logging.info("PLW SR: %.3f" % (results['all']['path_length_weighted_success_rate']))
+            logging.info("PLW GC: %.3f" % (results['all']['path_length_weighted_goal_condition_success_rate']))
+            logging.info("-------------")
+
+            # task type specific results
+            task_types = ['pick_and_place_simple', 'pick_clean_then_place_in_recep', 'pick_heat_then_place_in_recep',
+                        'pick_cool_then_place_in_recep', 'pick_two_obj_and_place', 'look_at_obj_in_light',
+                        'pick_and_place_with_movable_recep']
+            for task_type in task_types:
+                task_successes = [s for s in (list(successes)) if s['type'] == task_type]
+                task_failures = [f for f in (list(failures)) if f['type'] == task_type]
+                if len(task_successes) > 0 or len(task_failures) > 0:
+                    results[task_type] = cls.get_metrics(task_successes, task_failures)
+                else:
+                    results[task_type] = {}            
+
+        # -------------------------------------------------
+        # ------save the object states out --------------
+        logging.info("Goal Reached")
+        outpath = os.path.join(traj_data['raw_root'], 'metadata_states.json')
+        logging.info('saving to outpath: {}'.format(outpath))
+        with open(outpath, 'w') as f:
+            json.dump(states, f)
+        logging.info("----------------------------------------")
+
+        return states, outpath
+
+def main(args):
+
+    TIME_NOW = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    log_file_path = os.path.join(args.data, f'collect_demo_obj_states_T{TIME_NOW}.log')
+    hdlr = logging.FileHandler(log_file_path)
+    logger.addHandler(hdlr)
+    print (f'Logger is writing to {log_file_path}')
+
+    # start sim env
+    env = ThorEnv()
+    
+    # load splits
+    with open(args.raw_splits) as f:
+        raw_splits = json.load(f)
+    print(f'Raw Splits are : {raw_splits.keys()}')
+
+    # no language annotation available
+    r_idx = None
+
+    # book keeping -- some planner generated traj can still fail on execution
+    # save to files
+    failed_splits = {split_name:[] for split_name in raw_splits.keys()}
+    out_splits = {split_name:[] for split_name in raw_splits.keys()}
+    # report successes thus far (used in debugging only)
+    success_log_entries = {split_name:[] for split_name in raw_splits.keys()}
+    fail_log_entries = {split_name:[] for split_name in raw_splits.keys()}
+    tot_ct = {split_name:len(raw_splits[split_name]) for split_name in raw_splits.keys()}
+    results = {split_name:{} for split_name in raw_splits.keys()}
+
+    # loop through splits
+    print ('-----------START COLLECTING OBJECT STATES FROM RAW TRAJECTORIES-----------')
+    for split_name in raw_splits.keys():
+        tasks = [task for task in raw_splits[split_name]]
+        split_count = 0
+        print(f'Split {split_name} starts object states collection')
+        for task in progressbar.progressbar(tasks):
+            traj_data = load_task_json(task)
+            traj_data['raw_root'] = os.path.join(args.data, task['task'])
+            split_count += 1
+            logger.info('-----------------')
+            logger.info(f'Split {split_name}: {split_count}/{tot_ct[split_name]} task')
+            logger.info(f'Task Root: {traj_data['raw_root']}.')
+            logger.info(f'Task Type: {traj_data['task_type']}.')
+            print(f'Processing {traj_data['raw_root']}')
+            try:
+                _, _ = CollectStates.evaluate(args, env, split_name, traj_data, success_log_entries, fail_log_entries, results, logger)
+                print(f'Task succeeds to collect object state.')
+                out_splits[split_name].append({'task': tasks['task']}) # '<goal type>/<task_id>'
+            except:
+                failed_splits[split_name].append({'task': tasks['task']})
+                print(f'Task fails to collect object state.')
+        print(f'Split {split_name} object states collection results: successes={len(out_splits[split_name])}, fails={len(failed_splits[split_name])}, total={tot_ct[split_name]}')
+                                       
+    # save success splits
+    # /root/data_alfred/splits/
+    split_file_dir = '/'.join(args.raw_splits.split('/')[:-1])
+    # demo_june13_raw.json
+    split_file_name = args.raw_splits.split('/')[-1] 
+    # /root/data_alfred/splits/demo_june13.json
+    out_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', '.json'))
+    with open(out_splits_path, 'w') as f:
+        json.dump(out_splits, f)
+    print('Task IDs with object states successfully collected are saved to {out_splits_path}')
+
+    # save failed splits if debuggin
+    if args.debug:
+        # save failed splits
+        # /root/data_alfred/splits/demo_june13_failed.json
+        failed_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', '_failed.json'))
+        with open(failed_splits_path, 'w') as f:
+            json.dump(failed_splits, f)
+        print('Task IDs that failed object states collection are saved to {failed_splits_path}')
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser()
+
+    # data
+    parser.add_argument('--data', help='dataset folder', default='/root/data_alfred/demo_generated/new_trajectories')
+    parser.add_argument('--raw_splits', help='json file containing raw splits coming directly out from planner.', default='/root/data_alfred/splits/demo_june13_raw.json')
+    parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
+
+    # rollout
+    parser.add_argument('--max_fails', type=int, default=10, help='max API execution failures before episode termination')
+    parser.add_argument('--subgoals', type=str, help="subgoals to evaluate independently, eg:all or GotoLocation,PickupObject...", default="")
+    parser.add_argument('--smooth_nav', dest='smooth_nav', action='store_true', help='smooth nav actions (might be required based on training data)')
+
+    # debug
+    parser.add_argument('--debug', dest='debug', action='store_true')
+    parse_args = parser.parse_args()
+
+    main(parse_args)

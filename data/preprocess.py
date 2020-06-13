@@ -13,8 +13,6 @@ class Dataset(object):
 
     def __init__(self, args, vocab=None):
         self.args = args
-        self.dataset_path = args.data
-        self.pframe = args.pframe
 
         if vocab is None:
             self.vocab = {
@@ -36,9 +34,13 @@ class Dataset(object):
         return vocab.word2index([w.strip().lower() for w in words], train=train)
 
 
-    def preprocess_splits(self, splits):
+    def preprocess_splits(self, splits, preprocess_lang=True, train_vocab=True, save_vocab_to_dout=True):
         '''
         saves preprocessed data as jsons in specified folder
+        splits : dict read from <data path>/splits/*.json files
+        preprocess_lang : boolean. Whether to process language instructions.
+        train_vocab : boolean. Whether to keep training vocab -- add new types to them.
+        save_vocab_to_dout : boolean. Whether to save a copy of vocab to explainer model training directory. Use 'True' when training model. Use 'False' when preprocessing for demo.
         '''
         for k, d in splits.items():
             print('Preprocessing {}'.format(k))
@@ -54,7 +56,8 @@ class Dataset(object):
                     ex = json.load(f)
 
                 # copy trajectory
-                r_idx = task['repeat_idx'] # repeat_idx is the index of the annotation for each trajectory
+                # repeat_idx is the index of the annotation for each trajectory, none if generated from demo
+                r_idx = task['repeat_idx'] if preprocess_lang else None 
                 traj = ex.copy()
 
                 # root & split
@@ -63,11 +66,12 @@ class Dataset(object):
                 traj['repeat_idx'] = r_idx
 
                 # numericalize language
-                self.process_language(ex, traj, r_idx)
+                if preprocess_lang:
+                    self.process_language(ex, traj, r_idx, train=train_vocab)
 
                 # numericalize actions for train/valid splits
                 if 'test' not in k: # expert actions are not available for the test set
-                    self.process_actions(ex, traj)
+                    self.process_actions(ex, traj, train=train_vocab)
 
                 # check if preprocessing storage folder exists
                 preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
@@ -75,20 +79,23 @@ class Dataset(object):
                     os.makedirs(preprocessed_folder)
 
                 # save preprocessed json
-                preprocessed_json_path = os.path.join(preprocessed_folder, "ann_%d.json" % r_idx)
+                if preprocess_lang:
+                    preprocessed_json_path = os.path.join(preprocessed_folder, "ann_%d.json" % r_idx)
+                else:
+                    preprocessed_json_path = os.path.join(preprocessed_folder, "demo.json")
                 with open(preprocessed_json_path, 'w') as f:
                     json.dump(traj, f, sort_keys=True, indent=4)
 
-        # save vocab in dout path
-        vocab_dout_path = os.path.join(self.args.dout, '%s.vocab' % self.args.pp_folder)
-        torch.save(self.vocab, vocab_dout_path)
+        # save vocab in dout path if explainer training
+        if save_vocab_to_dout:
+            vocab_dout_path = os.path.join(self.args.dout, '%s.vocab' % self.args.pp_folder)
+            torch.save(self.vocab, vocab_dout_path)
 
         # save vocab in data path
         vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
         torch.save(self.vocab, vocab_data_path)
 
-
-    def process_language(self, ex, traj, r_idx):
+    def process_language(self, ex, traj, r_idx, train=True):
         # tokenize language
         traj['ann'] = {
             'goal': revtok.tokenize(remove_spaces_and_lower(ex['turk_annotations']['anns'][r_idx]['task_desc'])) + ['<<goal>>'],
@@ -98,11 +105,11 @@ class Dataset(object):
 
         # numericalize language
         traj['num'] = {}
-        traj['num']['lang_goal'] = self.numericalize(self.vocab['word'], traj['ann']['goal'], train=True)
-        traj['num']['lang_instr'] = [self.numericalize(self.vocab['word'], x, train=True) for x in traj['ann']['instr']]
+        traj['num']['lang_goal'] = self.numericalize(self.vocab['word'], traj['ann']['goal'], train=train)
+        traj['num']['lang_instr'] = [self.numericalize(self.vocab['word'], x, train=train) for x in traj['ann']['instr']]
 
 
-    def process_actions(self, ex, traj):
+    def process_actions(self, ex, traj, train=True):
         # deal with missing end high-level action
         self.fix_missing_high_pddl_end_action(ex)
 
@@ -127,7 +134,7 @@ class Dataset(object):
             # low-level action (API commands)
             traj['num']['action_low'][high_idx].append({
                 'high_idx': a['high_idx'],
-                'action': self.vocab['action_low'].word2index(a['discrete_action']['action'], train=True),
+                'action': self.vocab['action_low'].word2index(a['discrete_action']['action'], train=train),
                 'action_high_args': a['discrete_action']['args'],
             })
 
@@ -135,8 +142,8 @@ class Dataset(object):
             if 'bbox' in a['discrete_action']['args']:
                 xmin, ymin, xmax, ymax = [float(x) if x != 'NULL' else -1 for x in a['discrete_action']['args']['bbox']]
                 traj['num']['action_low'][high_idx][-1]['centroid'] = [
-                    (xmin + (xmax - xmin) / 2) / self.pframe,
-                    (ymin + (ymax - ymin) / 2) / self.pframe,
+                    (xmin + (xmax - xmin) / 2) / self.args.pframe,
+                    (ymin + (ymax - ymin) / 2) / self.args.pframe,
                 ]
             else:
                 traj['num']['action_low'][high_idx][-1]['centroid'] = [-1, -1]
@@ -159,8 +166,8 @@ class Dataset(object):
         for a in ex['plan']['high_pddl']:
             traj['num']['action_high'].append({
                 'high_idx': a['high_idx'],
-                'action': self.vocab['action_high'].word2index(a['discrete_action']['action'], train=True),
-                'action_high_args': self.numericalize(self.vocab['action_high'], a['discrete_action']['args']),
+                'action': self.vocab['action_high'].word2index(a['discrete_action']['action'], train=train),
+                'action_high_args': self.numericalize(self.vocab['action_high'], a['discrete_action']['args'], train=train),
             })
 
         # check alignment between step-by-step language and action sequence segments
