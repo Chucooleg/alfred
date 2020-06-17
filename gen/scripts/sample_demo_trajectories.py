@@ -99,16 +99,18 @@ def create_dirs(task_name, seed, obj_repeat):
     <args.save_path>/pick_two_obj_and_place-Watch-None-Dresser-301/trial_T20200609_122157_214995
     '''
     task_id = 'trial_T' + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    save_name = 'new_trajectories' + '/' + task_name + '/' + task_id
+    # pick_cool_then_place_in_recep-LettuceSliced-None-DiningTable-17/traj_T_...../
+    task_name_task_id = f'{task_name}/{task_id}/'
 
-    constants.save_path = os.path.join(constants.DATA_SAVE_PATH, save_name, RAW_IMAGES_FOLDER)
+    # constants.DATA_SAVE_PATH -- /data_alfred/demo_generated/new_trajectories_T.../
+    constants.save_path = os.path.join(constants.DATA_SAVE_PATH, task_name_task_id, RAW_IMAGES_FOLDER)
     if not os.path.exists(constants.save_path):
         os.makedirs(constants.save_path)
 
     print("Saving images to: " + constants.save_path)
     return task_id
 
-def save_bookkeeping(task_name, save_path, traj_dirs, errors, traj_error_map):
+def save_bookkeeping_and_splits(task_name, save_path, splits_dir, traj_dirs, errors):
     '''
     save successful and failed path strings to file.
     save error type and counts to file.
@@ -116,10 +118,16 @@ def save_bookkeeping(task_name, save_path, traj_dirs, errors, traj_error_map):
 
     # flatten to a list of success paths
     success_traj_dirs = []
+    # make raw split file for nex step in pipeline -- object state collection
+    split_entries = []
     for seed_key in traj_dirs['successes']:
-        success_traj_dirs += traj_dirs['successes'][seed_key]
+        # append e.g. /data_alfred/demo_generated/new_trajectories_T.../pick_two_obj_and_place-Watch-None-Dresser-301/trial_T20200609_122157_214995
+        success_traj_dirs.append(traj_dirs['successes'][seed_key])
+        # append e.g. {'task': 'pick_two_obj_and_place-Watch-None-Dresser-301/trial_T20200609_122157_214995'}
+        split_entries.append({'task':'/'.join(traj_dirs['successes'][seed_key].split('/')[-3:-1])})
 
     # save flat list of successful paths
+    # /data_alfred/demo_generated/new_trajectories_T..../<task_name>_success_dirs_T.....json
     path_successes = os.path.join(save_path, f'{task_name}_success_dirs_T{constants.TIME_NOW}.json') 
     with open(path_successes, 'w') as f:
         json.dump(success_traj_dirs, f)
@@ -134,10 +142,12 @@ def save_bookkeeping(task_name, save_path, traj_dirs, errors, traj_error_map):
     with open(path_errors, 'w') as f:
         json.dump(errors, f)
 
-    # save dictionary with traj dir and their error messages
-    path_errors = os.path.join(save_path, f'{task_name}_failed_dir_errors_T{constants.TIME_NOW}.json')
-    with open(path_errors, 'w') as f:
-        json.dump(errors, f)
+    # save to raw split file
+    # /data_alfred/splits/demo_T....._raw.json
+    split_path = os.path.join(splits_dir, f'demo_T{constants.TIME_NOW}_raw.json')
+    with open(split_path, 'w') as f:
+        json.dump({'demo':split_entries}, f)
+
 
 def sample_task_trajs(
     args, task_tuple, agent, env, obj_to_scene_ids, 
@@ -158,8 +168,6 @@ def sample_task_trajs(
     # success and failure book-keeping
     # k=error type, v=int count
     errors = {}
-    # k=traj dir path, v=error message
-    traj_error_map = {}
     # k=seed, v=traj dir path
     sampled_traj_dirs = {'successes':{}, 'fails':{}}
 
@@ -189,8 +197,10 @@ def sample_task_trajs(
         # e.g. 'pick_two_obj_and_place-Watch-None-Dresser-205'
         task_name = make_task_name(task_tuple)
         # create task directory to store plan, trajectory json and raw images
-        # e.g. <args.save_path>/pick_two_obj_and_place-Watch-None-Dresser-301/trial_T20200609_122157_214995
+        # task_id e.g. trial_T20200609_122157_214995
         task_id = create_dirs(task_name, seed, obj_repeat)
+        # e.g. /data_alfred/demo_generated/new_trajectories_T.../pick_two_obj_and_place-Watch-None-Dresser-301/trial_T20200609_122157_214995
+        task_root = constants.save_path.replace('raw_images/', '')
 
         # setup data dictionary for traj.json output
         setup_data_dict()
@@ -293,41 +303,18 @@ def sample_task_trajs(
             save_video()
 
             # stops trying once we succeed
-            tries_remaining = 0
+            # tries_remaining = 0 TODO uncomment this
+            tries_remaining -= 1
             
             # book keeping
-            sampled_traj_dirs['successes'][seed] = constants.save_path
+            sampled_traj_dirs['successes'][seed] = task_root
 
         except Exception as e:
 
             # report error in stdout
             import traceback
             traceback.print_exc()
-            estr = str(e)
-            print("Error: " + estr)
-            print("Invalid Task: skipping...")
-            if args.debug:
-                print(traceback.format_exc())
-            
-            # book keep errors to out files
-            if estr in errors.keys():
-                errors[estr] += 1
-            else: 
-                errors[estr] = 1
-            traj_error_map[constants.save_path] = estr
-            sampled_traj_dirs['fails'][seed] = constants.save_path
 
-            tries_remaining -= 1
-
-            # delete data recorded for this trial
-            deleted = delete_save(args.in_parallel)
-            if not deleted:  # another thread is filling this task successfully, so leave it alone.
-                target_remaining = 0  # stop trying to do this task.
-            else:
-                if str(e) == "API Action Failed: No valid positions to place object found":
-                    # Try increasing the space available on sparse and empty flagged objects.
-                    num_place_fails += 1
-            
             estr = str(e)
             if len(estr) > 120:
                 estr = estr[:120]
@@ -343,6 +330,20 @@ def sample_task_trajs(
                 print("\t(%.2f) (%d)\t%s" % (v / es, v, er))
             print("%%%%%%%%%%")
 
+            sampled_traj_dirs['fails'][seed] = task_root
+
+            tries_remaining -= 1
+
+            # delete data recorded for this trial
+            deleted = delete_save(args.in_parallel)
+            if not deleted:  # another thread is filling this task successfully, so leave it alone.
+                target_remaining = 0  # stop trying to do this task with this thread.
+            else:
+                if str(e) == "API Action Failed: No valid positions to place object found":
+                    # Try increasing the space available on sparse and empty flagged objects.
+                    num_place_fails += 1
+                tries_remaining -= 1
+
             continue
 
         # optionally delete directory for successful tasks.   
@@ -355,7 +356,7 @@ def sample_task_trajs(
     print('Finished a maximum of {} trials, with {} fails.'.format(args.trials_before_fail, num_place_fails))
     print("%%%%%%%%%%")
     
-    return sampled_traj_dirs, errors, traj_error_map
+    return sampled_traj_dirs, errors
 
 
 def sample_task_params(args):
@@ -405,8 +406,7 @@ def main(args):
 
     # settings
     constants.TIME_NOW = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    constants.DATA_SAVE_PATH = args.save_path + f'_T{constants.TIME_NOW}'
-
+    constants.DATA_SAVE_PATH = args.save_path[:-1] + f'_T{constants.TIME_NOW}/'
     # ---------------------Setup Scene and Object Candidates------------------------
     # objects-to-scene and scene-to-objects database
     for scene_type, ids in constants.SCENE_TYPE.items():
@@ -469,15 +469,14 @@ def main(args):
     task_name = make_task_name(task_tuple)
 
     # call sample_task_trajs
-    sampled_traj_dirs, errors, traj_error_map = sample_task_trajs(
+    sampled_traj_dirs, errors = sample_task_trajs(
         args, task_tuple, agent, env, obj_to_scene_ids, scene_id_to_objs, pickup_candidates, add_requirements)
 
     # save the directory paths for success and failed trajectories, 
     # and error counts to disk
-    save_bookkeeping(
-        task_name, constants.DATA_SAVE_PATH, 
-        sampled_traj_dirs, errors, traj_error_map)
-
+    save_bookkeeping_and_splits(
+        task_name, constants.DATA_SAVE_PATH, args.splits_dir,
+        sampled_traj_dirs, errors)
 
 def parallel_main(args):
     procs = [mp.Process(target=main, args=(args,)) for _ in range(args.num_threads)]
@@ -495,7 +494,8 @@ if __name__ == "__main__":
 
     # save settings
     parser.add_argument('--force_unsave_successes', action='store_true', help="don't save any data for successful traj (for debugging purposes)")
-    parser.add_argument('--save_path', type=str, help="where to save the success & failure trajectories and data")
+    parser.add_argument('--save_path', type=str, help="where to save the success & failure trajectories and data",  default='/root/data_alfred/demo_generated/new_trajectories/')
+    parser.add_argument('--splits_dir', type=str, help="where to save the split file",  default='/root/data_alfred/splits/')
 
     # debugging settings
     parser.add_argument('--debug', action='store_true', help="print agent env actions info per timestep.")
@@ -506,7 +506,7 @@ if __name__ == "__main__":
     # multi-thread settings
     parser.add_argument("--in_parallel", action='store_true', help="this collection will run in parallel with others, so load from disk on every new sample")
     parser.add_argument("-n", "--num_threads", type=int, default=0, help="number of processes for parallel mode")
-    parser.add_argument('--json_file', type=str, default="", help="path to json file with trajectory dump")
+    # parser.add_argument('--json_file', type=str, default="", help="path to json file with trajectory dump")
 
     # task params
     parser.add_argument("--goal", type=str, default='random1', help='goal such as pick_two_obj_and_place. "random" for random pick.')
@@ -519,6 +519,7 @@ if __name__ == "__main__":
     parser.add_argument("--trials_before_fail", type=int, default=5)
 
     parse_args = parser.parse_args()
+    parse_args.save_path = '/'.join(parse_args.save_path.split('/'))
 
     if parse_args.in_parallel and parse_args.num_threads > 1:
         parallel_main(parse_args)
