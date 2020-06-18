@@ -334,7 +334,7 @@ def sample_task_trajs(
             import traceback
             traceback.print_exc()
 
-            sampled_traj_dirs['fails'][seed] = task_root
+            sampled_traj_dirs['fails'][seed] = task_root[]
 
             deleted = delete_save(args.in_parallel)
             if not deleted:  # another thread is filling this task successfully, so leave it alone.
@@ -342,7 +342,7 @@ def sample_task_trajs(
             else:
                 if str(e) == "API Action Failed: No valid positions to place object found":
                     # Try increasing the space available on sparse and empty flagged objects.
-                    num_place_fails += 1
+                    num_place_fails += 1 # OBSOLETE
                     tries_remaining -= 1
                 else:  # generic error
                     tries_remaining -= 1
@@ -372,7 +372,7 @@ def sample_task_trajs(
 
     print("---------------End of Sampling----------------")
     print((gtype, pickup_obj, movable_obj, receptacle_obj, str(scene_num)))
-    print('Finished a maximum of {} trials, with {} fails.'.format(args.trials_before_fail, num_place_fails))
+    print('Finished a maximum of {} trials, with {} fails.'.format(args.trials_before_fail, es))
     # if this combination resulted in a certain number of failures with no successes, flag it as not possible.
     if tries_remaining == 0 and target_remaining == args.repeats_per_cond:
          print('The specified tuple is too hard to sample any successful trajectories.')
