@@ -334,7 +334,7 @@ def sample_task_trajs(
             import traceback
             traceback.print_exc()
 
-            sampled_traj_dirs['fails'][seed] = task_root[]
+            sampled_traj_dirs['fails'][seed] = task_root
 
             deleted = delete_save(args.in_parallel)
             if not deleted:  # another thread is filling this task successfully, so leave it alone.
@@ -506,6 +506,8 @@ def parallel_main(args):
     finally:
         for proc in procs:
             proc.join()
+            proc.terminate() # gentle kill
+            # proc.kill()
 
 
 if __name__ == "__main__":
