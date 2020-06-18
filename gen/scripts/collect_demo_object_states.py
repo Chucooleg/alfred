@@ -357,6 +357,8 @@ def main(args):
     print ('-----------START COLLECTING OBJECT STATES FROM RAW TRAJECTORIES-----------')
     for split_name in raw_splits.keys():
         tasks = [task for task in raw_splits[split_name]]
+        if args.first_task_only:
+            asks = tasks[0]
         split_count = 0
         print(f'Split {split_name} starts object states collection')
         print(f'Tasks: {tasks}')
@@ -406,6 +408,7 @@ if __name__ == "__main__":
     parser.add_argument('--data', help='dataset folder', default='/root/data_alfred/demo_generated/new_trajectories')
     parser.add_argument('--raw_splits', help='json file containing raw splits coming directly out from planner.', default='/root/data_alfred/splits/demo_june13_raw.json')
     parser.add_argument('--reward_config', default='models/config/rewards.json')
+    parser.add_argument('--first_task_only', action='store_true', help='only process the first task loaded.')
 
     # rollout
     parser.add_argument('--max_fails', type=int, default=10, help='max API execution failures before episode termination')

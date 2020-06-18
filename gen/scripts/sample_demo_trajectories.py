@@ -5,6 +5,7 @@ sys.path.append(os.path.join(os.environ['ALFRED_ROOT'], 'gen'))
 
 import time
 import multiprocessing as mp
+import subprocess
 import json
 import random
 import shutil
@@ -372,7 +373,7 @@ def sample_task_trajs(
 
     print("---------------End of Sampling----------------")
     print((gtype, pickup_obj, movable_obj, receptacle_obj, str(scene_num)))
-    print('Finished a maximum of {} trials, with {} fails.'.format(args.trials_before_fail, es))
+    print('Finished a maximum of {} trials, with {} fails.'.format(args.trials_before_fail, sum([errors[er] for er in errors])))
     # if this combination resulted in a certain number of failures with no successes, flag it as not possible.
     if tries_remaining == 0 and target_remaining == args.repeats_per_cond:
          print('The specified tuple is too hard to sample any successful trajectories.')
@@ -506,8 +507,7 @@ def parallel_main(args):
     finally:
         for proc in procs:
             proc.join()
-            proc.terminate() # gentle kill
-            # proc.kill()
+        subprocess.call(["pkill", "-f", 'thor'])
 
 
 if __name__ == "__main__":
