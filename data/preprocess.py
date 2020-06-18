@@ -1,4 +1,8 @@
+import sys
 import os
+sys.path.append(os.path.join(os.environ['ALFRED_ROOT'], 'models'))
+
+import re
 import json
 import revtok
 import torch
@@ -51,7 +55,7 @@ class Dataset(object):
 
             for task in progressbar.progressbar(d):
                 # load json file
-                json_path = os.path.join(self.args.data, k, task['task'], 'traj_data.json')
+                json_path = os.path.join(self.args.data, '' if k == 'demo' else k, task['task'], 'traj_data.json')
                 with open(json_path) as f:
                     ex = json.load(f)
 
@@ -71,7 +75,7 @@ class Dataset(object):
 
                 # numericalize actions for train/valid splits
                 if 'test' not in k: # expert actions are not available for the test set
-                    self.process_actions(ex, traj, train=train_vocab)
+                    self.process_actions(ex, traj, train=train_vocab, language_processed=preprocess_lang)
 
                 # check if preprocessing storage folder exists
                 preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
@@ -109,7 +113,7 @@ class Dataset(object):
         traj['num']['lang_instr'] = [self.numericalize(self.vocab['word'], x, train=train) for x in traj['ann']['instr']]
 
 
-    def process_actions(self, ex, traj, train=True):
+    def process_actions(self, ex, traj, train=True, language_processed=True):
         # deal with missing end high-level action
         self.fix_missing_high_pddl_end_action(ex)
 
@@ -122,6 +126,8 @@ class Dataset(object):
 
         # init action_low and action_high
         num_hl_actions = len(ex['plan']['high_pddl'])
+        if 'num' not in traj.keys(): # if we skip process_language()
+            traj['num'] = {}
         traj['num']['action_low'] = [list() for _ in range(num_hl_actions)]  # temporally aligned with HL actions
         traj['num']['action_high'] = []
         low_to_high_idx = []
@@ -172,11 +178,12 @@ class Dataset(object):
 
         # check alignment between step-by-step language and action sequence segments
         action_low_seg_len = len(traj['num']['action_low'])
-        lang_instr_seg_len = len(traj['num']['lang_instr'])
-        seg_len_diff = action_low_seg_len - lang_instr_seg_len
-        if seg_len_diff != 0:
-            assert (seg_len_diff == 1) # sometimes the alignment is off by one  ¯\_(ツ)_/¯
-            self.merge_last_two_low_actions(traj)
+        if language_processed:
+            lang_instr_seg_len = len(traj['num']['lang_instr'])
+            seg_len_diff = action_low_seg_len - lang_instr_seg_len
+            if seg_len_diff != 0:
+                assert (seg_len_diff == 1) # sometimes the alignment is off by one  ¯\_(ツ)_/¯
+                self.merge_last_two_low_actions(traj)
 
 
     def fix_missing_high_pddl_end_action(self, ex):

@@ -13,7 +13,7 @@ from tqdm import trange
 
 class Module(nn.Module):
 
-    def __init__(self, args, vocab, object_vocab):
+    def __init__(self, args, vocab, object_vocab=None):
         '''
         Base Seq2Seq agent with common train and val loops
         '''
@@ -542,10 +542,14 @@ class Module(nn.Module):
         raise NotImplementedError()
 
     def get_task_and_ann_id(self, ex):
+        # TODO
         '''
         single string for task_id and annotation repeat idx
         '''
-        return "%s_%s" % (ex['task_id'], str(ex['repeat_idx']))
+        if ('repeat_idx' in ex.keys()) and (ex['repeat_idx'] is not None):
+            return "%s_%s" % (ex['task_id'], str(ex['repeat_idx']))
+        else:
+            return ex['task_id']
 
     def make_debug(self, preds, data):
         '''
@@ -578,7 +582,11 @@ class Module(nn.Module):
         '''
         load preprocessed json from disk
         '''
-        json_path = os.path.join(self.args.data, task['task'], '%s' % self.args.pp_folder, 'ann_%d.json' % task['repeat_idx'])
+        if 'repeat_idx' in task.keys():
+            json_name = 'ann_%d.json' % task['repeat_idx'] 
+        else:
+            json_name = 'demo.json' 
+        json_path = os.path.join(self.args.data, task['task'], '%s' % self.args.pp_folder, json_name)
         retry = 0
         while True:
             try:
@@ -595,7 +603,7 @@ class Module(nn.Module):
     def load_task_jsons(self, task):
         '''
         load all preprocessed jsons with matching task index from disk. 
-        do this to gather all 3 versions of language annotations.
+        do this to gather all 3 versions of language annotations for computing metric.
         '''
         dataset = []
         for i in range(3):
@@ -619,7 +627,11 @@ class Module(nn.Module):
         '''
         returns the folder path of a trajectory
         '''
-        return os.path.join(self.args.data, ex['split'], *(ex['root'].split('/')[-2:]))
+        if ex['split'] != 'demo':
+            return os.path.join(self.args.data, ex['split'], *(ex['root'].split('/')[-2:]))
+        else:
+            # for demo use, we dont put traj in separate split directories
+            return os.path.join(self.args.data, *(ex['root'].split('/')[-2:]))
 
     def iterate(self, data, batch_size):
         '''
@@ -679,7 +691,7 @@ class Module(nn.Module):
         saved_args = save['args']
         for k ,v in overwrite_args.items():
             setattr(saved_args, k, v)
-        model = cls(saved_args, save['vocab'], save['object_vocab'])
+        model = cls(saved_args, save['vocab'], save['object_vocab'] if 'object_vocab' in save.keys() else None)
         model.load_state_dict(save['model'])
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
         optimizer.load_state_dict(save['optim'])

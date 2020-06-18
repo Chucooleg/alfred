@@ -148,6 +148,27 @@ def save_bookkeeping_and_splits(task_name, save_path, splits_dir, traj_dirs, err
     with open(split_path, 'w') as f:
         json.dump({'demo':split_entries}, f)
 
+def count_successes_from_disk(task_tuple):
+
+    task_name = make_task_name(task_tuple)
+    print(task_name)
+
+    success_count = 0
+    # top constants.DATA_SAVE_PATH
+    # e.g. /data_alfred/demo_generated/new_trajectories_T20200615_203135_456358
+    for root, dirs, files in os.walk(constants.DATA_SAVE_PATH):
+        for d in dirs:
+            if d.count('-') == 4 and d == task_name:
+                # top  # e.g. /data_alfred/demo_generated/new_trajectories_T20200615_203135_456358/pick_two_obj_and_place-Watch-None-Dresser-205
+                for _root, _dirs, _files in os.walk(os.path.join(constants.DATA_SAVE_PATH, d)):
+                    # each traj_T...
+                    for _d in _dirs:
+                        for __root, __dirs, __files in os.walk(os.path.join(constants.DATA_SAVE_PATH, d, _d)):
+                            if 'video.mp4' in __files:
+                                success_count += 1
+                break
+                        
+    return success_count
 
 def sample_task_trajs(
     args, task_tuple, agent, env, obj_to_scene_ids, 
@@ -162,6 +183,7 @@ def sample_task_trajs(
 
     print("Force Unsave Success Data: %s" % str(args.force_unsave_successes))
 
+    # scene_num is an integer
     gtype, pickup_obj, movable_obj, receptacle_obj, scene_num = task_tuple
     print(f'Task: {task_tuple}')
 
@@ -172,6 +194,7 @@ def sample_task_trajs(
     sampled_traj_dirs = {'successes':{}, 'fails':{}}
 
     # try multiple times
+    target_remaining = args.repeats_per_cond - count_successes_from_disk(task_tuple)
     tries_remaining = args.trials_before_fail
     num_place_fails = 0
 
@@ -187,7 +210,7 @@ def sample_task_trajs(
     else:
         obj_repeat = None
 
-    while tries_remaining > 0:
+    while tries_remaining > 0 and target_remaining > 0:
 
         constants.pddl_goal_type = gtype
         print("PDDLGoalType: " + constants.pddl_goal_type)            
@@ -264,7 +287,7 @@ def sample_task_trajs(
                 task_objs['toggle'] = receptacle_obj
             else:
                 task_objs['receptacle'] = receptacle_obj
-            # specific object instances (with ID) are chosen for pickup and receptacle targets        
+            # specific object instances (with ID) are chosen for pickup and receptacle targets    
             agent.setup_problem({'info': info}, scene=scene_info, objs=task_objs)
 
             # start recording metadata for positions of objects
@@ -301,10 +324,6 @@ def sample_task_trajs(
             dump_data_dict()
             # save images in images_path to video_path
             save_video()
-
-            # stops trying once we succeed
-            # tries_remaining = 0 TODO uncomment this
-            tries_remaining -= 1
             
             # book keeping
             sampled_traj_dirs['successes'][seed] = task_root
@@ -314,6 +333,19 @@ def sample_task_trajs(
             # report error in stdout
             import traceback
             traceback.print_exc()
+
+            sampled_traj_dirs['fails'][seed] = task_root
+
+            deleted = delete_save(args.in_parallel)
+            if not deleted:  # another thread is filling this task successfully, so leave it alone.
+                target_remaining = 0  # stop trying to do this task.
+            else:
+                if str(e) == "API Action Failed: No valid positions to place object found":
+                    # Try increasing the space available on sparse and empty flagged objects.
+                    num_place_fails += 1
+                    tries_remaining -= 1
+                else:  # generic error
+                    tries_remaining -= 1
 
             estr = str(e)
             if len(estr) > 120:
@@ -330,32 +362,21 @@ def sample_task_trajs(
                 print("\t(%.2f) (%d)\t%s" % (v / es, v, er))
             print("%%%%%%%%%%")
 
-            sampled_traj_dirs['fails'][seed] = task_root
-
+        finally:
             tries_remaining -= 1
-
-            # delete data recorded for this trial
-            deleted = delete_save(args.in_parallel)
-            if not deleted:  # another thread is filling this task successfully, so leave it alone.
-                target_remaining = 0  # stop trying to do this task with this thread.
-            else:
-                if str(e) == "API Action Failed: No valid positions to place object found":
-                    # Try increasing the space available on sparse and empty flagged objects.
-                    num_place_fails += 1
-                tries_remaining -= 1
-
-            continue
+            target_remaining = args.repeats_per_cond - count_successes_from_disk(task_tuple)
 
         # optionally delete directory for successful tasks.   
         if args.force_unsave_successes:
             delete_save(args.in_parallel)        
 
-    # TODO deal with number of fails we have had in the past
     print("---------------End of Sampling----------------")
     print((gtype, pickup_obj, movable_obj, receptacle_obj, str(scene_num)))
     print('Finished a maximum of {} trials, with {} fails.'.format(args.trials_before_fail, num_place_fails))
-    print("%%%%%%%%%%")
-    
+    # if this combination resulted in a certain number of failures with no successes, flag it as not possible.
+    if tries_remaining == 0 and target_remaining == args.repeats_per_cond:
+         print('The specified tuple is too hard to sample any successful trajectories.')
+
     return sampled_traj_dirs, errors
 
 
@@ -389,6 +410,7 @@ def sample_task_params(args):
     if args.scene == 'random1':
         scene_num = 205
     else:
+        # scene_num = int(args.scene)
         scene_num = args.scene
     
     if args.seed != -1:
@@ -404,9 +426,6 @@ def sample_task_params(args):
 
 def main(args):
 
-    # settings
-    constants.TIME_NOW = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    constants.DATA_SAVE_PATH = args.save_path[:-1] + f'_T{constants.TIME_NOW}/'
     # ---------------------Setup Scene and Object Candidates------------------------
     # objects-to-scene and scene-to-objects database
     for scene_type, ids in constants.SCENE_TYPE.items():
@@ -516,10 +535,17 @@ if __name__ == "__main__":
     parser.add_argument("--scene", type=str, default='random1', help='scene number. "999" for random pick.')
     parser.add_argument("--seed", type=int, default=-1, help='scene number. -1 for random pick.')
 
+    # number of tries
+    parser.add_argument("--repeats_per_cond", type=int, default=3)
     parser.add_argument("--trials_before_fail", type=int, default=5)
 
     parse_args = parser.parse_args()
     parse_args.save_path = '/'.join(parse_args.save_path.split('/'))
+
+    # settings
+    constants.TIME_NOW = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    # /data_alfred/demo_generated/new_trajectories_T{}
+    constants.DATA_SAVE_PATH = parse_args.save_path[:-1] + f'_T{constants.TIME_NOW}/'
 
     if parse_args.in_parallel and parse_args.num_threads > 1:
         parallel_main(parse_args)

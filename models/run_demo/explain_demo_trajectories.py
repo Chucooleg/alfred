@@ -4,65 +4,121 @@ sys.path.append(os.path.join(os.environ['ALFRED_ROOT']))
 sys.path.append(os.path.join(os.environ['ALFRED_ROOT'], 'models'))
 
 import re
+import time
 import torch
 import pprint
 import json
+from collections import defaultdict
+
 from data.preprocess import Dataset
 from importlib import import_module
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from tensorboardX import SummaryWriter
 
 
-def run_demo_pred(split, model, args):
+def make_overrride_args(args, level='low'):
+    '''make the news args that override the old args loaded in model checkpoints'''
+    assert level in ['low', 'high']
+    new_args = {arg:getattr(args, arg) for arg in vars(args)}
+    # use new pp folder: pp_model:.....,name:.....
+    new_args['pp_folder'] = 'pp_{}'.format(re.findall('(model:.*,name.*)/', new_args[f'{level}_level_explainer_checkpt_path'])[0])
+    return new_args
+
+def load_task_json(model, task):
+    '''
+    load preprocessed demo json from disk
+    '''    
+    json_path = os.path.join(model.args.data, task['task'], '%s' % model.args.pp_folder, 'demo.json')
+    retry = 0
+    while True:
+        try:
+            if retry > 0:
+                print ('retrying {}'.format(retry))
+            with open(json_path) as f:
+                data = json.load(f)
+            return data
+        except:
+            retry += 1
+            time.sleep(5)
+            pass
+    
+def validate_vocab(args, model, level='low'):
+    # validate language vocab
+    if level == 'high' and args.high_level_explainer_checkpt_path == 'None':
+        return
+    else:
+        # load vocab from data
+        pp_suffix = re.findall('(model:.*,name.*)/', args.low_level_explainer_checkpt_path if level=='low' else args.high_level_explainer_checkpt_path)[0]
+        data_vocab_path = os.path.join(args.data, f'pp_{pp_suffix}.vocab')
+        assert os.path.exists(data_vocab_path), 'data vocab path does not exist, cannot pass sanity check'
+        assert torch.load(data_vocab_path) == model.vocab, 'data vocab and model vocab do not match, cannot pass sanity check'
+
+    if level == 'low':
+        # validate object vocab
+        data_obj_vocab_path = os.path.join(args.data, f'pp_{pp_suffix}.object_vocab')
+        if (model.object_vocab is not None) or (os.path.exists(data_obj_vocab_path)):
+            assert torch.load(data_obj_vocab_path)['object_type'].__dict__['_index2word'] == model.object_vocab['object_type'].__dict__['_index2word'], 'data vocab object and model object vocab do not match, cannot pass sanity check'
+
+@torch.no_grad()
+def run_demo_pred(split, model, batch_size):
     '''make prediction on data without loss or metrics computations'''
     p_split = {}
-    for batch, feat in self.iterate(split, args.batch):
+    model.eval()
+    for batch, feat, _ in model.iterate(split, batch_size):
         out = model.forward(feat, validate_teacher_forcing=False, validate_sample_output=False)
-        preds = self.extract_preds(out, batch, feat)
+        preds = model.extract_preds(out, batch, feat)
         p_split.update(preds)
     return p_split   
 
-def make_demo_output(preds, data):
+def make_demo_output(preds, data, model):
     '''
     make language output for demo
     '''
     outputs = {}
     for task in data:
-        ex = model.load_task_json(task)
+        ex = load_task_json(model, task)
+        # just the task_id 'traj_T...'
         i = model.get_task_and_ann_id(ex)
         outputs[i] = {'p_lang_instr': preds[i]['lang_instr']}
     return outputs
 
-@torch.no_grad()
-def main(splits, model, args=None):
+def pred_and_save(split, split_name, model, batch_size, dout, level='low', debug=False):
+        assert level in ['low', 'high']
 
-    args = args or model.args
+        print(f'Processing {split_name} split with {level} level explainer model.')
+
+        # model make predictions
+        split_preds = run_demo_pred(split, model, batch_size)
+        # make language output for demo
+        split_outputs = make_demo_output(split_preds, split, model)
+        # save outputs to path for next step in pipeline
+        # /data_alfred/demo_generated/new_trajectories/dout_explainer_low_{}_high_{}/{split}_{level}_output_preds.json
+        pred_out_path = os.path.join(dout, f'{split_name}_{level}_output_preds.json')
+        with open(pred_out_path, 'w') as f:
+            json.dump(split_outputs, f)
+        print(f'Saving {level} level language instruction outputs for demo to {pred_out_path}')
+
+        # make file to debug predictions for 
+        # input, lang, attn, aux targets, ...
+        if debug:
+            split_debugs = model.make_debug(split_preds, split)
+            pred_debug_path = os.path.join(dout, f'{split_name}_{level}_debug_preds.json')
+            with open(pred_debug_path, 'w') as f:
+                json.dump(split_debugs, f)
+            print(f'Saving {level} level debug outputs for demo to {pred_debug_path}')
+
+@torch.no_grad()
+def main(args, splits, low_level_model, high_level_model=None):
     
     if args.fast_epoch:
         splits = {split_name:splits[split_name][:16] for split_name in splits.keys()}
 
-    # display dout
-    print("Saving model predictions to: %s" % args.dout)
-
-    for split in splits:
-        # model make predictions
-        split_preds = run_demo_pred(split, model, args)
-        # make language output for demo
-        split_outputs = make_demo_output(split_preds, split)
-        # save outputs to path for next step in pipeline
-        pred_out_path = os.path.join(args.dout, f'{split}_output_preds.json')
-        with open(pred_out_path, 'w') as f:
-            json.dump(split_outputs, f)
-        print(f'Saving language output for demo to {pred_out_path}')
-
-        # make file to debug predictions for 
-        # input, lang, attn, aux targets, ...
-        if args.debug:
-            split_debugs = model.make_debug(split_preds, split)
-            pred_debug_path = os.path.join(args.dout, f'{split}_debug_preds.json')
-            with open(pred_debug_path, 'w') as f:
-                json.dump(split_debugs, f)
-            print(f'Saving debugging output for demo to {pred_debug_path}')
+    # Run low level explainer for splits
+    for split_name in splits.keys():
+        split = splits[split_name]
+        pred_and_save(split, split_name, low_level_model, args.batch, args.dout, level='low', debug=args.debug)
+        if high_level_model is not None:
+            pred_and_save(split, split_name, high_level_model, args.batch, args.dout, level='high', debug=args.debug)
 
 
 if __name__ == '__main__':
@@ -70,90 +126,76 @@ if __name__ == '__main__':
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
 
     # settings
-    # parser.add_argument('--seed', help='random seed', default=123, type=int)
+    parser.add_argument('--seed', help='random seed', default=123, type=int)
     parser.add_argument('--data', help='dataset folder', default='/root/data_alfred/demo_generated/new_trajectories')
     parser.add_argument('--splits', help='json file containing train/dev/test splits', default='/root/data_alfred/splits/demo_june13.json')
-    # parser.add_argument('--preprocess', help='store preprocessed data to json files', action='store_true')
-    parser.add_argument('--pp_folder', help='folder name for preprocessed data, such as "pp_<modelname>" ')
-    # parser.add_argument('--object_vocab', help='object_vocab version', default='object_20200521')
-    # parser.add_argument('--save_every_epoch', help='save model after every epoch (warning: consumes a lot of space)', action='store_true')
-    # parser.add_argument('--monitor_train_every', help='save debugging json and compute metric for training set at every regular interval. (warning: adds a lot of time)', default=100, type=int)
-    parser.add_argument('--model_path', help='path to model checkpoint')
+    parser.add_argument('--low_level_explainer_checkpt_path', help='path to model checkpoint')
+    parser.add_argument('--high_level_explainer_checkpt_path', help='path to model checkpoint', default='None')
     parser.add_argument('--gpu', help='use gpu', action='store_true')
-    parser.add_argument('--dout', help='where to save model predictions', default='exp/model:{model}')
-    # parser.add_argument('--resume', help='load a checkpoint') 
-
-    # hyper parameters
-    # parser.add_argument('--batch', help='batch size', default=8, type=int)
-    # parser.add_argument('--epoch', help='number of epochs', default=20, type=int)
-    # parser.add_argument('--lr', help='optimizer learning rate', default=1e-4, type=float)
-    # parser.add_argument('--decay_epoch', help='num epoch to adjust learning rate', default=10, type=int)
-    # parser.add_argument('--dhid', help='hidden layer size', default=512, type=int)
-    # parser.add_argument('--dframe', help='image feature vec size', default=2500, type=int)
-    # parser.add_argument('--demb', help='language embedding size', default=100, type=int)
-    # parser.add_argument('--pframe', help='image pixel size (assuming square shape eg: 300x300)', default=300, type=int)
-    # parser.add_argument('--mask_loss_wt', help='weight of mask loss', default=1., type=float)
-    # parser.add_argument('--action_loss_wt', help='weight of action loss', default=1., type=float)
-    # parser.add_argument('--subgoal_aux_loss_wt', help='weight of subgoal completion predictor', default=0., type=float)
-    # parser.add_argument('--pm_aux_loss_wt', help='weight of progress monitor', default=0., type=float)
-
-    # # architecture ablations
-    # parser.add_argument('--encoder_addons', type=str, default='none', choices=['none', 'max_pool_obj', 'biattn_obj'])
-    # parser.add_argument('--decoder_addons', type=str, default='none', choices=['none', 'aux_loss'])
-    # parser.add_argument('--object_repr', type=str, default='type', choices=['type', 'instance'])
-    # parser.add_argument('--reweight_aux_bce', help='reweight binary CE for auxiliary tasks', action='store_true')
-
-    # # dropouts
-    # parser.add_argument('--zero_goal', help='zero out goal language', action='store_true')
-    # parser.add_argument('--zero_instr', help='zero out step-by-step instr language', action='store_true')
-    # parser.add_argument('--act_dropout', help='dropout rate for action input sequence', default=0., type=float)
-    # parser.add_argument('--lang_dropout', help='dropout rate for language (goal + instr)', default=0., type=float)
-    # parser.add_argument('--input_dropout', help='dropout rate for concatted input feats', default=0., type=float)
-    # parser.add_argument('--vis_dropout', help='dropout rate for Resnet feats', default=0.3, type=float)
-    # parser.add_argument('--hstate_dropout', help='dropout rate for LSTM hidden states during unrolling', default=0.3, type=float)
-    # parser.add_argument('--attn_dropout', help='dropout rate for attention', default=0., type=float)
-    # parser.add_argument('--actor_dropout', help='dropout rate for actor fc', default=0., type=float)
-    # parser.add_argument('--word_dropout', help='dropout rate for word fc', default=0., type=float)
-
-    # # other settings
-    # parser.add_argument('--train_teacher_forcing', help='use gpu', action='store_true')
-    # parser.add_argument('--train_student_forcing_prob', help='bernoulli probability', default=0.1, type=float)
-    # parser.add_argument('--temp_no_history', help='use gpu', action='store_true')
+    parser.add_argument('--batch', help='batch size', default=8, type=int)
 
     # debugging
     parser.add_argument('--fast_epoch', help='fast epoch during debugging', action='store_true')
     parser.add_argument('--debug', dest='debug', action='store_true')
-    # parser.add_argument('--dataset_fraction', help='use fraction of the dataset for debugging (0 indicates full size)', default=0, type=int)
 
     # args and init
     args = parser.parse_args()
-    args.dout = args.dout.format(**vars(args))
     torch.manual_seed(args.seed)
 
-    # make output dir
     print('Input args:')
     pprint.pprint(args)
-    if not os.path.isdir(args.dout):
-        os.makedirs(args.dout)
 
     # load train/valid/tests splits
     with open(args.splits) as f:
         splits = json.load(f)
         pprint.pprint({k: len(v) for k, v in splits.items()})    
 
-    # load model module from model path
-    print(f'Model path : {args.model_path}')
-    args.model = re.findall('model:(.*),name:', args.model_path)[0]
-    print(f'Model module : {args.model}')
-    M = import_module('model.{}'.format(args.model))
+    # load model types
+    print(f'Low-level Explainer Model path : {args.low_level_explainer_checkpt_path}')
+    print(f'High-level Explainer Model path : {args.high_level_explainer_checkpt_path}')
 
+    # make output dir for predictions
+    # e.g. model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce_1to2
+    low_mod_name = re.findall('(model:.*,name.*)/', args.low_level_explainer_checkpt_path)[0]
+    high_mod_name = re.findall('(model:.*,name.*)/', args.high_level_explainer_checkpt_path)[0] if args.high_level_explainer_checkpt_path != 'None' else 'None'
+    args.dout = os.path.join(args.data, f'dout_explainer_low_{low_mod_name}_high_{high_mod_name}')
+    if not os.path.isdir(args.dout):
+        print (f'Output directory: {args.dout}')
+        os.makedirs(args.dout)
+
+    # load models modules
+    # e.g. seq2seq_per_subgoal
+    low_module = re.findall('model:(.*),name:', args.low_level_explainer_checkpt_path)[0]
+    high_module = re.findall('model:(.*),name:', args.high_level_explainer_checkpt_path)[0] if args.high_level_explainer_checkpt_path != 'None' else 'None'
+
+    # load low-level model
+    print(f'Loading low-level Explainer Model module : {low_module}')
+    M_low = import_module('model.{}'.format(low_module))
     # load model checkpoint, override path related arguments
-    model, _, _, _ = M.Module.load(
-        args.model_path, {arg:getattr(args, arg) for arg in vars(args)})
+    low_level_model, _, _, _ = M_low.Module.load(
+        args.low_level_explainer_checkpt_path, make_overrride_args(args, 'low'))
+    low_level_model.demo_mode = True
+
+    # load high-level model
+    high_level_model = None
+    if args.high_level_explainer_checkpt_path != 'None':
+        print(f'Loading high-level Explainer Model module : {high_module}')
+        M_high = import_module('model.{}'.format(high_module))
+        # load model checkpoint, override path related arguments
+        high_level_model, _, _, _ = M_high.Module.load(
+            args.high_level_explainer_checkpt_path, make_overrride_args(args, 'high'))
+        high_level_model.demo_mode = True
+
+    # make sure model vocab is the same vocab used to preprocess data
+    validate_vocab(args, low_level_model, level='low')
+    validate_vocab(args, high_level_model, level='high')
 
     # to gpu
     if args.gpu:
-        model = model.to(torch.device('cuda'))
+        low_level_model = low_level_model.to(torch.device('cuda'))
+        if args.high_level_explainer_checkpt_path != 'None':
+            high_level_model = high_level_model.to(torch.device('cuda'))
 
     # run evaluation
-    main(splits, model, args)
+    main(args, splits, low_level_model, high_level_model)
+

@@ -134,7 +134,7 @@ class Module(Base):
             # serialize segments
             # self.serialize_lang_action(ex)
             
-            if not self.test_mode: 
+            if (not self.test_mode) and (not self.demo_mode): 
                 # goal and instr language
                 # list(num words in goal), list(num subgoals list(num words in subgoal))
                 lang_goal, lang_instr = ex['num']['lang_goal'], ex['num']['lang_instr']
@@ -165,6 +165,7 @@ class Module(Base):
             start_time = time.time()
             
             # load Resnet features from disk
+            # /data_alfred/demo_generated/new_trajectories_T.../<goal_type>/traj_T.../
             root = self.get_task_root(ex)
 
             # time
@@ -190,12 +191,14 @@ class Module(Base):
                 high_idx = 0
                 low_idx = 0
                 for i, d in enumerate(ex['images']): # 67
-                    if ex['images']['high_idx'] > high_idx:
+
+                    if d['high_idx'] > high_idx:
                         low_idx = 0
-                        high_idx = ex['images']['high_idx']
-                    elif ex['images']['low_idx'] > last_image_low_idx: # 55 > 54
+                        high_idx = d['high_idx']
+                    elif d['low_idx'] > last_image_low_idx: # 55 > 54
                         low_idx += 1
-                    last_image_low_idx = ex['images']['low_idx']
+
+                    last_image_low_idx = d['low_idx']
                     # only add frames linked with low-level actions (i.e. skip filler frames like smooth rotations and dish washing)
                     if keep[high_idx][low_idx] is None:
                         keep[high_idx][low_idx] = im[i]
@@ -222,6 +225,7 @@ class Module(Base):
             if self.encoder_addons != 'none' and self.decoder_addons != 'none':
 
                 states_root = root.replace('train/', '').replace('valid_seen/', '').replace('valid_unseen/', '')
+                
                 with open(os.path.join(states_root, '{}/extracted_feature_states.json'.format(self.pp_folder)), 'r') as f:
                     obj_states = json.load(f)
 
@@ -492,6 +496,7 @@ class Module(Base):
                 words = self.vocab['word'].index2word(lang_instr)
 
                 task_id_ann = self.get_task_and_ann_id(ex)
+                # predicted language
                 pred[task_id_ann]['lang_instr'][subgoal_i] = ' '.join(words)
 
             # Aux Loss

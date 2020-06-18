@@ -940,8 +940,11 @@ class LanguageDecoder(nn.Module):
         # deal with valid object indices in compute_loss
 
         # Language Model----------------------------------------------
-        gold = feat_subgoal['lang_instr']
-        max_t = gold.size(1) if (self.training or validate_teacher_forcing) else max_decode
+        if self.training or validate_teacher_forcing:
+            gold = feat_subgoal['lang_instr']
+            max_t = gold.size(1)
+        else:
+            max_t = max_decode
         batch = enc.size(0)
         # go is a learned embedding
         e_t = self.go.repeat(batch, 1)

@@ -14,22 +14,23 @@ from models.utils.helper_utils import optimizer_to
 from gen.utils.image_util import decompress_mask as util_decompress_mask
 import gen.constants as constants
 
+import re
 import numpy as np
 from PIL import Image
 from datetime import datetime
-from eval.eval import Eval
+from models.eval.eval import Eval
 from env.thor_env import ThorEnv
-from eval.eval_task import EvalTask
+from models.eval.eval_task import EvalTask
 from collections import defaultdict
 import logging
 import progressbar
 
-def load_task_json(task):
+def load_task_json(args, task):
     '''
     load preprocessed json from disk
-    '''
+    ''' 
     # e.g. /root/data_alfred/demo_generated/new_trajectories_debug_sampler_20200611/pick_two_obj_and_place-Watch-None-Dresser-205/trial_T20200611_235502_613792/traj_data.json
-    json_path = os.path.join(args.data, task['task_type'], task['task_id'], 'traj_data.json')
+    json_path = os.path.join(args.data, task['task'], 'traj_data.json')
 
     with open(json_path) as f:
         data = json.load(f)
@@ -43,15 +44,13 @@ def decompress_mask(compressed_mask):
     mask = np.expand_dims(mask, axis=0)
     return mask
 
-def CollectStates(EvalTask):
+class CollectStates(EvalTask):
 
     object_state_list = ['isToggled', 'isBroken', 'isFilledWithLiquid', 'isDirty',
                   'isUsedUp', 'isCooked', 'ObjectTemperature', 'isSliced',
                   'isOpen', 'isPickedUp', 'mass', 'receptacleObjectIds']
 
     object_symbol_list = constants.OBJECTS
-
-    non_interact_actions = ['MoveAhead', 'Rotate', 'Look', '<<stop>>', '<<pad>>', '<<seg>>']
 
     @classmethod
     def get_object_list(cls, traj_data):
@@ -121,8 +120,18 @@ def CollectStates(EvalTask):
         return [ob for ob in visible_objects.keys() if visible_objects[ob]], [recp for recp in visible_receptacles.keys() if visible_receptacles[recp]]    
 
     @classmethod
-    # add lock back
-    def evaluate(cls, args, env, split_name, traj_data, success_log_entries, fail_log_entries, results, logger):
+    def has_interaction(cls, action):
+        '''
+        check if low-level action is interactive
+        '''
+        non_interact_actions = ['MoveAhead', 'Rotate', 'Look', '<<stop>>', '<<pad>>', '<<seg>>']
+        if any(a in action for a in non_interact_actions):
+            return False
+        else:
+            return True        
+
+    @classmethod
+    def evaluate(cls, args, r_idx, env, split_name, traj_data, success_log_entries, fail_log_entries, results, logger):
 
         # setup scene
         reward_type = 'dense'
@@ -140,7 +149,7 @@ def CollectStates(EvalTask):
         end_action = {
             'api_action': {'action': 'NoOp'},
             'discrete_action': {'action': '<<stop>>', 'args': {}},
-            'high_idx': ex['plan']['high_pddl'][-1]['high_idx']
+            'high_idx': traj_data['plan']['high_pddl'][-1]['high_idx']
         }
         # e.g. [0,0,0, ... , 11], lenght = total T
         groundtruth_subgoal_alignment = []
@@ -148,14 +157,15 @@ def CollectStates(EvalTask):
         groundtruth_valid_interacts = []
         # len=num timestep with valid interact, np shape (1 , 300 , 300)
         groundtruth_low_mask = []
-        for a in (ex['plan']['low_actions'] + [end_action]):
+        for a in (traj_data['plan']['low_actions'] + [end_action]):
             # high-level action index (subgoals)
             groundtruth_subgoal_alignment.append(a['high_idx'])
             # interaction validity
-            groundtruth_valid_interacts.append(1 if a['discrete_action']['action'] in cls.non_interact_actions else 0)
+            step_valid_interact = 1 if cls.has_interaction(a['discrete_action']['action']) else 0
+            groundtruth_valid_interacts.append(step_valid_interact)
             # interaction mask values
-            if 'mask' in a.keys() and a['mask'] is not None:
-                groundtruth_low_mask.append(decompress_mask(a['mask']))
+            if 'mask' in a['discrete_action']['args'].keys() and a['discrete_action']['args']['mask'] is not None:
+                groundtruth_low_mask.append(decompress_mask(a['discrete_action']['args']['mask']))
 
         # ground-truth high-level subgoals
         # e.g. ['GotoLocation', 'PickupObject', 'SliceObject', 'GotoLocation', 'PutObject', ... 'NoOp']
@@ -192,22 +202,20 @@ def CollectStates(EvalTask):
                 logging.info("predicted STOP")
                 break
             
-            # transition to next subgoal
             if high_idx < groundtruth_subgoal_alignment[t]:
                 high_idx = groundtruth_subgoal_alignment[t]
-                object_states_curr = cls.get_object_states(event.metadata)
-                visible_objects, visible_receptacles = cls.get_visibility(event.metadata, obj_symbol_set, receptacle_symbol_set)
-                objects_changed, objects_unchanged = cls.divide_objects_by_change(object_states_curr, object_states_last)
-                states.append({
-                    'time_step': t,
-                    'raw_object_metadata': event.metadata['objects'],
-                    'receptacle_states_delta': cls.get_unchanged_symbols(objects_changed, objects_unchanged, receptacle_symbol_set),
-                    'object_states_delta': cls.get_unchanged_symbols(objects_changed, objects_unchanged, obj_symbol_set),
-                    'visible_objects': visible_objects,
-                    'visible_receptacles': visible_receptacles,
-                    'subgoals': groundtruth_action_high[high_idx]
-                })
-                object_states_last = object_states_curr
+                new_subgoal = True
+            else:
+                new_subgoal = False
+            
+            # collect metadata states only
+            states.append({
+                'new_subgoal': new_subgoal,
+                'time_step': t,
+                'subgoal_step': groundtruth_subgoal_alignment[t],
+                'subgoal': groundtruth_action_high[groundtruth_subgoal_alignment[t]],
+                'objects_metadata': event.metadata['objects'],
+            })
             
             # collect groundtruth action and mask
             # single string
@@ -262,7 +270,7 @@ def CollectStates(EvalTask):
             
             log_entry = {'trial': traj_data['task_id'],
                         'type': traj_data['task_type'],
-                        'repeat_idx': int(r_idx),
+                        'repeat_idx': int(r_idx) if r_idx else None,
                         'goal_instr': goal_instr,
                         'completed_goal_conditions': int(pcs[0]),
                         'total_goal_conditions': int(pcs[1]),
@@ -317,10 +325,9 @@ def CollectStates(EvalTask):
 
 def main(args):
 
-    TIME_NOW = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    log_file_path = os.path.join(args.data, f'collect_demo_obj_states_T{TIME_NOW}.log')
+    log_file_path = os.path.join(args.data, f'collect_demo_obj_states_T{args.PLANNER_TIME_STAMP}.log')
     hdlr = logging.FileHandler(log_file_path)
     logger.addHandler(hdlr)
     print (f'Logger is writing to {log_file_path}')
@@ -352,21 +359,23 @@ def main(args):
         tasks = [task for task in raw_splits[split_name]]
         split_count = 0
         print(f'Split {split_name} starts object states collection')
+        print(f'Tasks: {tasks}')
         for task in progressbar.progressbar(tasks):
-            traj_data = load_task_json(task)
+            traj_data = load_task_json(args, task)
             traj_data['raw_root'] = os.path.join(args.data, task['task'])
             split_count += 1
             logger.info('-----------------')
             logger.info(f'Split {split_name}: {split_count}/{tot_ct[split_name]} task')
-            logger.info(f'Task Root: {traj_data['raw_root']}.')
-            logger.info(f'Task Type: {traj_data['task_type']}.')
-            print(f'Processing {traj_data['raw_root']}')
+            logger.info(f'Task Root: {traj_data["raw_root"]}.')
+            logger.info(f'Task Type: {traj_data["task_type"]}.')
+            print(f'\nProcessing {traj_data["raw_root"]}')
             try:
-                _, _ = CollectStates.evaluate(args, env, split_name, traj_data, success_log_entries, fail_log_entries, results, logger)
+                _, _ = CollectStates.evaluate(args, r_idx, env, split_name, traj_data, success_log_entries, fail_log_entries, results, logger)
                 print(f'Task succeeds to collect object state.')
-                out_splits[split_name].append({'task': tasks['task']}) # '<goal type>/<task_id>'
-            except:
-                failed_splits[split_name].append({'task': tasks['task']})
+                out_splits[split_name].append({'task': task["task"]}) # '<goal type>/<task_id>'
+            except Exception as e:
+                raise e
+                failed_splits[split_name].append({'task': task["task"]})
                 print(f'Task fails to collect object state.')
         print(f'Split {split_name} object states collection results: successes={len(out_splits[split_name])}, fails={len(failed_splits[split_name])}, total={tot_ct[split_name]}')
                                        
@@ -379,7 +388,7 @@ def main(args):
     out_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', '.json'))
     with open(out_splits_path, 'w') as f:
         json.dump(out_splits, f)
-    print('Task IDs with object states successfully collected are saved to {out_splits_path}')
+    print(f'New split file for successful trajectories is saved to {out_splits_path}')
 
     # save failed splits if debuggin
     if args.debug:
@@ -388,8 +397,7 @@ def main(args):
         failed_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', '_failed.json'))
         with open(failed_splits_path, 'w') as f:
             json.dump(failed_splits, f)
-        print('Task IDs that failed object states collection are saved to {failed_splits_path}')
-
+        print(f'New split file for failed trajectories is saved to {failed_splits_path}')
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -397,7 +405,7 @@ if __name__ == "__main__":
     # data
     parser.add_argument('--data', help='dataset folder', default='/root/data_alfred/demo_generated/new_trajectories')
     parser.add_argument('--raw_splits', help='json file containing raw splits coming directly out from planner.', default='/root/data_alfred/splits/demo_june13_raw.json')
-    parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
+    parser.add_argument('--reward_config', default='models/config/rewards.json')
 
     # rollout
     parser.add_argument('--max_fails', type=int, default=10, help='max API execution failures before episode termination')
@@ -405,7 +413,10 @@ if __name__ == "__main__":
     parser.add_argument('--smooth_nav', dest='smooth_nav', action='store_true', help='smooth nav actions (might be required based on training data)')
 
     # debug
-    parser.add_argument('--debug', dest='debug', action='store_true')
+    parser.add_argument('--debug', dest='debug', action='store_true') # TODO True will give rise to X DISPLAY ERROR
     parse_args = parser.parse_args()
+
+    parse_args.reward_config = os.path.join(os.environ['ALFRED_ROOT'], parse_args.reward_config)
+    parse_args.PLANNER_TIME_STAMP = re.findall('new_trajectories_T(.*)/', parse_args.data)[0]
 
     main(parse_args)
