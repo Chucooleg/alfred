@@ -111,11 +111,13 @@ def create_dirs(task_name, seed, obj_repeat):
     print("Saving images to: " + constants.save_path)
     return task_id
 
-def save_bookkeeping_and_splits(task_name, save_path, splits_dir, traj_dirs, errors):
+def save_bookkeeping_and_splits(task_name, save_path, splits_dir, traj_dirs, errors, thread_i=None):
     '''
     save successful and failed path strings to file.
     save error type and counts to file.
     '''
+
+    thread_suffix = f'_{thread_i}' if thread_i is not None else ''
 
     # flatten to a list of success paths
     success_traj_dirs = []
@@ -129,25 +131,77 @@ def save_bookkeeping_and_splits(task_name, save_path, splits_dir, traj_dirs, err
 
     # save flat list of successful paths
     # /data_alfred/demo_generated/new_trajectories_T..../<task_name>_success_dirs_T.....json
-    path_successes = os.path.join(save_path, f'{task_name}_success_dirs_T{constants.TIME_NOW}.json') 
+    path_successes = os.path.join(save_path, f'{task_name}_success_dirs_T{constants.TIME_NOW}{thread_suffix}.json') 
     with open(path_successes, 'w') as f:
         json.dump(success_traj_dirs, f)
 
     # save dictionary with both success and fails, along with their seeds.
-    path_samp_res = os.path.join(save_path, f'{task_name}_sampled_traj_dirs_T{constants.TIME_NOW}.json')
+    path_samp_res = os.path.join(save_path, f'{task_name}_sampled_traj_dirs_T{constants.TIME_NOW}{thread_suffix}.json')
     with open(path_samp_res, 'w') as f:
         json.dump(traj_dirs, f)
 
     # save dictionary with errors and their counts
-    path_errors = os.path.join(save_path, f'{task_name}_errors_T{constants.TIME_NOW}.json')
-    with open(path_errors, 'w') as f:
-        json.dump(errors, f)
+    if thread_i is not None:
+        path_errors = os.path.join(save_path, f'{task_name}_errors_T{constants.TIME_NOW}{thread_suffix}.json')
+        with open(path_errors, 'w') as f:
+            json.dump(errors, f)
+    else:
+        path_errors = os.path.join(save_path, f'errors_T{constants.TIME_NOW}.json')
+        with open(path_errors, 'w') as f:
+            json.dump({task_name: errors}, f)        
 
     # save to raw split file
     # /data_alfred/splits/demo_T....._raw.json
-    split_path = os.path.join(splits_dir, f'demo_T{constants.TIME_NOW}_raw.json')
+    split_path = os.path.join(splits_dir, f'demo_T{constants.TIME_NOW}{thread_suffix}_raw.json')
     with open(split_path, 'w') as f:
         json.dump({'demo':split_entries}, f)
+
+
+def merge_thread_results(args):
+    '''merge results from multiple threads, they may or may not be working on the same task tuples'''
+
+    # Merge splits
+    merge_split = {'demo':[]}
+    output_split_path = os.path.join(args.splits_dir, f'demo_T{constants.TIME_NOW}_raw.json')
+    for thread_i in range(args.num_threads):
+        thread_split_path = output_split_path.replace('_raw', f'_{thread_i}_raw')
+        with open(thread_split_path, 'r') as f:
+            merge_split['demo'] += json.load(f)['demo']
+    with open(output_split_path, 'w') as f:
+        json.dump(merge_split, f)
+    print('\nSaved output split to :', output_split_path)
+    
+    # Merge error counts
+    # identify all the task names
+    task_names = []
+    # e.g. /data_alfred/demo_generated/new_trajectories_T20200615_203135_456358
+    for root, dirs, files in os.walk(constants.DATA_SAVE_PATH):
+        for d in dirs:
+            if d.count('-') == 4:
+                task_names.append(d)
+    task_names = set(task_names)
+    print('Task names from threads:', task_names)
+
+    merge_errors = {}
+    output_errors_path = os.path.join(constants.DATA_SAVE_PATH, f'errors_T{constants.TIME_NOW}.json')
+    for task_name in task_names:
+        merge_errors[task_name] = {}
+        for thread_i in range(args.num_threads):
+            thread_errors_path = os.path.join(constants.DATA_SAVE_PATH, f'{task_name}_errors_T{constants.TIME_NOW}_{thread_i}.json')
+            if os.path.exists(thread_errors_path):
+                with open(thread_errors_path, 'r') as f:
+                    thread_errors = json.load(f)
+                print(f'thread {thread_i}:')
+                for k in thread_errors.keys():
+                    print(f'{k} {thread_errors[k]}')
+                    if k not in merge_errors.keys():
+                        merge_errors[task_name][k] = 0
+                    merge_errors[task_name][k] = merge_errors[task_name][k] + thread_errors[k] 
+
+    with open(output_errors_path, 'w') as f:
+        json.dump(merge_errors, f)
+    print('Saved error logs to :', output_errors_path)
+
 
 def count_successes_from_disk(task_tuple):
 
@@ -343,7 +397,7 @@ def sample_task_trajs(
             else:
                 if str(e) == "API Action Failed: No valid positions to place object found":
                     # Try increasing the space available on sparse and empty flagged objects.
-                    num_place_fails += 1 # OBSOLETE
+                    num_place_fails += 1 
                     tries_remaining -= 1
                 else:  # generic error
                     tries_remaining -= 1
@@ -425,7 +479,7 @@ def sample_task_params(args):
     return task_tuple, add_requirements
 
 
-def main(args):
+def main(args, thread_i=None):
 
     # ---------------------Setup Scene and Object Candidates------------------------
     # objects-to-scene and scene-to-objects database
@@ -496,10 +550,10 @@ def main(args):
     # and error counts to disk
     save_bookkeeping_and_splits(
         task_name, constants.DATA_SAVE_PATH, args.splits_dir,
-        sampled_traj_dirs, errors)
+        sampled_traj_dirs, errors, thread_i)
 
 def parallel_main(args):
-    procs = [mp.Process(target=main, args=(args,)) for _ in range(args.num_threads)]
+    procs = [mp.Process(target=main, args=(args, thread_i)) for thread_i in range(args.num_threads)]
     try:
         for proc in procs:
             proc.start()
@@ -551,5 +605,6 @@ if __name__ == "__main__":
 
     if parse_args.in_parallel and parse_args.num_threads > 1:
         parallel_main(parse_args)
+        merge_thread_results(parse_args)
     else:
         main(parse_args)
