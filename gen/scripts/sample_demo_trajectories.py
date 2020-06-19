@@ -194,9 +194,9 @@ def merge_thread_results(args):
                 print(f'thread {thread_i}:')
                 for k in thread_errors.keys():
                     print(f'{k} {thread_errors[k]}')
-                    if k not in merge_errors.keys():
+                    if k not in merge_errors[task_name].keys():
                         merge_errors[task_name][k] = 0
-                    merge_errors[task_name][k] = merge_errors[task_name][k] + thread_errors[k] 
+                    merge_errors[task_name][k] += thread_errors[k] 
 
     with open(output_errors_path, 'w') as f:
         json.dump(merge_errors, f)
