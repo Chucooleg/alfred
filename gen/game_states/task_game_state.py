@@ -79,6 +79,18 @@ class TaskGameState(PlannedGameState):
         remove_prob = 0.0
         return dataset_type, max_num_repeats, remove_prob, task_row
 
+    # debug
+    # def does_any_recep_type_have_obj_of_type(self, r, ot):
+    #     all_recep_of_type = [o for o in self.env.last_event.metadata['objects'] if o['objectType'] == r['objectType']]
+    #     valid_recep = []
+    #     for recep in all_recep_of_type:
+    #         receptacle_obj_ids = recep['receptacleObjectIds']
+    #         if receptacle_obj_ids is not None:
+    #             objs_of_type = [obj_id for obj_id in receptacle_obj_ids if ot in obj_id]
+    #             if len(objs_of_type) > 0:
+    #                 valid_recep.append(recep)
+    #     return len(valid_recep) > 0
+
     def get_filter_crit(self, goal_type):
 
         # helper functions
@@ -222,6 +234,7 @@ class TaskGameState(PlannedGameState):
                           and o['objectType'] in constants.VAL_ACTION_OBJECTS["Toggleable"]]
 
         if len(pickupable_objects) == 0:
+
             print("Task Failed - %s" % constants.pddl_goal_type)
             raise Exception("No pickupable objects in the scene")
 
@@ -301,6 +314,7 @@ class TaskGameState(PlannedGameState):
             val_receptacle_objects_orig = [r for r in receptacle_objects if (self.rand_chosen_val_moveable_recep_class if self.mrecep_target != None else self.rand_chosen_object_class)
                                       in constants.VAL_RECEPTACLE_OBJECTS[r['objectType']]]
             _, recep_crit = self.get_filter_crit(constants.pddl_goal_type)
+            
             val_receptacle_objects = list(filter(recep_crit, val_receptacle_objects_orig))
 
             if len(val_receptacle_objects) == 0:

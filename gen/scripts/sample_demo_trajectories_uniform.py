@@ -267,7 +267,8 @@ def sample_task_trajs(
     else:
         obj_repeat = None
 
-    while tries_remaining > 0 and target_remaining > 0:
+    # while tries_remaining > 0 and target_remaining > 0:
+    while tries_remaining > 0 :
 
         constants.pddl_goal_type = gtype
         print("PDDLGoalType: " + constants.pddl_goal_type)            
