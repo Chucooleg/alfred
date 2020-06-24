@@ -278,35 +278,37 @@ def run():
         print(skipped_files)
 
 
-traj_list = []
-lock = threading.Lock()
+if __name__ == '__main__':
 
-# parse arguments
-parser = argparse.ArgumentParser()
-parser.add_argument('--data_path', type=str, default="data/2.1.0")
-parser.add_argument('--smooth_nav', dest='smooth_nav', action='store_true')
-parser.add_argument('--time_delays', dest='time_delays', action='store_true')
-parser.add_argument('--shuffle', dest='shuffle', action='store_true')
-parser.add_argument('--num_threads', type=int, default=1)
-parser.add_argument('--reward_config', type=str, default='../models/config/rewards.json')
-args = parser.parse_args()
+    traj_list = []
+    lock = threading.Lock()
 
-# make a list of all the traj_data json files
-for dir_name, subdir_list, file_list in walklevel(args.data_path, level=2):
-    if "trial_" in dir_name:
-        json_file = os.path.join(dir_name, TRAJ_DATA_JSON_FILENAME)
-        if not os.path.isfile(json_file):
-            continue
-        traj_list.append(json_file)
+    # parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_path', type=str, default="data/2.1.0")
+    parser.add_argument('--smooth_nav', dest='smooth_nav', action='store_true')
+    parser.add_argument('--time_delays', dest='time_delays', action='store_true')
+    parser.add_argument('--shuffle', dest='shuffle', action='store_true')
+    parser.add_argument('--num_threads', type=int, default=1)
+    parser.add_argument('--reward_config', type=str, default='../models/config/rewards.json')
+    args = parser.parse_args()
 
-# random shuffle
-if args.shuffle:
-    random.shuffle(traj_list)
+    # make a list of all the traj_data json files
+    for dir_name, subdir_list, file_list in walklevel(args.data_path, level=2):
+        if "trial_" in dir_name:
+            json_file = os.path.join(dir_name, TRAJ_DATA_JSON_FILENAME)
+            if not os.path.isfile(json_file):
+                continue
+            traj_list.append(json_file)
 
-# start threads
-threads = []
-for n in range(args.num_threads):
-    thread = threading.Thread(target=run)
-    threads.append(thread)
-    thread.start()
-    time.sleep(1)
+    # random shuffle
+    if args.shuffle:
+        random.shuffle(traj_list)
+
+    # start threads
+    threads = []
+    for n in range(args.num_threads):
+        thread = threading.Thread(target=run)
+        threads.append(thread)
+        thread.start()
+        time.sleep(1)
