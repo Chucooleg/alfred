@@ -12,6 +12,7 @@ from vocab import Vocab
 from model.seq2seq import Module as model
 from gen.utils.py_util import remove_spaces_and_lower
 
+import shutil
 
 class Dataset(object):
 
@@ -31,14 +32,18 @@ class Dataset(object):
 
 
     @staticmethod
-    def numericalize(vocab, words, train=True):
+    def numericalize(vocab, words, train=True, action_high=False):
         '''
         converts words to unique integers
         '''
-        return vocab.word2index([w.strip().lower() for w in words], train=train)
+        # if action_high:
+        #     words = [w.strip().lower().replace('sink', 'sinkbasin').replace('bathtub', 'bathtubbasin') for w in words]
+        # else:
+        words = [w.strip().lower() for w in words]
+        return vocab.word2index(words, train=train)
 
 
-    def preprocess_splits(self, splits, preprocess_lang=True, train_vocab=True, save_vocab_to_dout=True):
+    def preprocess_splits(self, splits, preprocess_lang=True, train_vocab=True, save_vocab_to_dout=True, demo_mode=False):
         '''
         saves preprocessed data as jsons in specified folder
         splits : dict read from <data path>/splits/*.json files
@@ -54,14 +59,15 @@ class Dataset(object):
                 d = d[:16]
 
             for task in progressbar.progressbar(d):
+                
                 # load json file
-                json_path = os.path.join(self.args.data, '' if k == 'demo' else k, task['task'], 'traj_data.json')
+                json_path = os.path.join(self.args.data, '' if demo_mode else k, task['task'], 'traj_data.json')
                 with open(json_path) as f:
                     ex = json.load(f)
 
                 # copy trajectory
                 # repeat_idx is the index of the annotation for each trajectory, none if generated from demo
-                r_idx = task['repeat_idx'] if preprocess_lang else None 
+                r_idx = task['repeat_idx']
                 traj = ex.copy()
 
                 # root & split
@@ -71,7 +77,7 @@ class Dataset(object):
 
                 # numericalize language
                 if preprocess_lang:
-                    self.process_language(ex, traj, r_idx, train=train_vocab)
+                    self.process_language(ex, traj, r_idx, train=train_vocab, demo_mode=demo_mode)
 
                 # numericalize actions for train/valid splits
                 if 'test' not in k: # expert actions are not available for the test set
@@ -80,18 +86,20 @@ class Dataset(object):
                 # check if preprocessing storage folder exists
                 preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
                 if not os.path.isdir(preprocessed_folder):
-                    os.makedirs(preprocessed_folder)
+                    os.makedirs(preprocessed_folder)               
 
                 # save preprocessed json
-                if preprocess_lang:
-                    preprocessed_json_path = os.path.join(preprocessed_folder, "ann_%d.json" % r_idx)
+                if demo_mode:
+                    preprocessed_json_path = os.path.join(preprocessed_folder, "demo_%d.json" % r_idx)
                 else:
-                    preprocessed_json_path = os.path.join(preprocessed_folder, "demo.json")
+                    preprocessed_json_path = os.path.join(preprocessed_folder, "ann_%d.json" % r_idx)
                 with open(preprocessed_json_path, 'w') as f:
                     json.dump(traj, f, sort_keys=True, indent=4)
 
         # save vocab in dout path if explainer training
         if save_vocab_to_dout:
+            if not os.path.exists(self.args.dout):
+                os.mkdir(self.args.dout)
             vocab_dout_path = os.path.join(self.args.dout, '%s.vocab' % self.args.pp_folder)
             torch.save(self.vocab, vocab_dout_path)
 
@@ -99,11 +107,12 @@ class Dataset(object):
         vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
         torch.save(self.vocab, vocab_data_path)
 
-    def process_language(self, ex, traj, r_idx, train=True):
+    def process_language(self, ex, traj, r_idx, train=True, demo_mode=False):
         # tokenize language
+        ann_key = 'explainer_annotations' if demo_mode else 'turk_annotations'
         traj['ann'] = {
-            'goal': revtok.tokenize(remove_spaces_and_lower(ex['turk_annotations']['anns'][r_idx]['task_desc'])) + ['<<goal>>'],
-            'instr': [revtok.tokenize(remove_spaces_and_lower(x)) for x in ex['turk_annotations']['anns'][r_idx]['high_descs']] + [['<<stop>>']],
+            'goal': revtok.tokenize(remove_spaces_and_lower(ex[ann_key]['anns'][r_idx]['task_desc'])) + ['<<goal>>'],
+            'instr': [revtok.tokenize(remove_spaces_and_lower(x)) for x in ex[ann_key]['anns'][r_idx]['high_descs']] + [['<<stop>>']],
             'repeat_idx': r_idx
         }
 
@@ -173,7 +182,7 @@ class Dataset(object):
             traj['num']['action_high'].append({
                 'high_idx': a['high_idx'],
                 'action': self.vocab['action_high'].word2index(a['discrete_action']['action'], train=train),
-                'action_high_args': self.numericalize(self.vocab['action_high'], a['discrete_action']['args'], train=train),
+                'action_high_args': self.numericalize(self.vocab['action_high'], a['discrete_action']['args'], train=train, action_high=True),
             })
 
         # check alignment between step-by-step language and action sequence segments

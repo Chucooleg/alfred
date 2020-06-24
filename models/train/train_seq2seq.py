@@ -49,6 +49,9 @@ if __name__ == '__main__':
     parser.add_argument('--object_repr', type=str, default='type', choices=['type', 'instance'])
     parser.add_argument('--reweight_aux_bce', help='reweight binary CE for auxiliary tasks', action='store_true')
 
+    # target
+    parser.add_argument('--predict_high_level_goal', help='predict abstract single high level goal for entire task.', action='store_true')
+
     # dropouts
     parser.add_argument('--zero_goal', help='zero out goal language', action='store_true')
     parser.add_argument('--zero_instr', help='zero out step-by-step instr language', action='store_true')

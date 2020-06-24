@@ -127,7 +127,7 @@ def save_bookkeeping_and_splits(task_name, save_path, splits_dir, traj_dirs, err
         # append e.g. /data_alfred/demo_generated/new_trajectories_T.../pick_two_obj_and_place-Watch-None-Dresser-301/trial_T20200609_122157_214995
         success_traj_dirs.append(traj_dirs['successes'][seed_key])
         # append e.g. {'task': 'pick_two_obj_and_place-Watch-None-Dresser-301/trial_T20200609_122157_214995'}
-        split_entries.append({'task':'/'.join(traj_dirs['successes'][seed_key].split('/')[-3:-1])})
+        split_entries.append({'task':'/'.join(traj_dirs['successes'][seed_key].split('/')[-3:-1]), 'repeat_idx':0})
 
     # save flat list of successful paths
     # /data_alfred/demo_generated/new_trajectories_T..../<task_name>_success_dirs_T.....json
@@ -167,6 +167,11 @@ def merge_thread_results(args):
         thread_split_path = output_split_path.replace('_raw', f'_{thread_i}_raw')
         with open(thread_split_path, 'r') as f:
             merge_split['demo'] += json.load(f)['demo']
+    # if no threads have succeeded in collecting any trajs, exit the whole pipeline
+    if len(merge_split['demo']) < 1:
+        print('The specified task is too hard for planner to execute.')
+        sys.exit(1)
+    # move on to save
     with open(output_split_path, 'w') as f:
         json.dump(merge_split, f)
     print('\nSaved output split to :', output_split_path)
@@ -557,6 +562,7 @@ def main(args, thread_i=None):
         sampled_traj_dirs, errors, thread_i)
 
 def parallel_main(args):
+    subprocess.call(["pkill", "-f", 'thor'])
     procs = [mp.Process(target=main, args=(args, thread_i)) for thread_i in range(args.num_threads)]
     try:
         for proc in procs:

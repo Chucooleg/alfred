@@ -248,7 +248,7 @@ class CollectStates(EvalTask):
         if goal_satisfied:
             print("Goal Reached")
             success = True
-        assert success       
+        assert success
 
         # -------------------------------------------------
         # ------debug execution success rate --------------
@@ -266,11 +266,10 @@ class CollectStates(EvalTask):
             # path length weighted SPL
             plw_s_spl = s_spl * path_len_weight
             plw_pc_spl = pc_spl * path_len_weight
-            
-            
+
             log_entry = {'trial': traj_data['task_id'],
                         'type': traj_data['task_type'],
-                        'repeat_idx': int(r_idx) if r_idx else None,
+                        'repeat_idx': int(r_idx),
                         'goal_instr': goal_instr,
                         'completed_goal_conditions': int(pcs[0]),
                         'total_goal_conditions': int(pcs[1]),
@@ -357,8 +356,6 @@ def main(args):
     print ('-----------START COLLECTING OBJECT STATES FROM RAW TRAJECTORIES-----------')
     for split_name in raw_splits.keys():
         tasks = [task for task in raw_splits[split_name]]
-        if args.first_task_only:
-            asks = tasks[0]
         split_count = 0
         print(f'Split {split_name} starts object states collection')
         print(f'Tasks: {tasks}')
@@ -374,9 +371,12 @@ def main(args):
             try:
                 _, _ = CollectStates.evaluate(args, r_idx, env, split_name, traj_data, success_log_entries, fail_log_entries, results, logger)
                 print(f'Task succeeds to collect object state.')
-                out_splits[split_name].append({'task': task["task"]}) # '<goal type>/<task_id>'
+                out_splits[split_name].append({'task': task["task"], 'repeat_idx':task['repeat_idx']}) # '<goal type>/<task_id>'
+                if args.first_task_only:
+                    print(f"Found a successful traj for split {split_name}. Stopping for this split.")
+                    break
             except Exception as e:
-                raise e
+                print(e)
                 failed_splits[split_name].append({'task': task["task"]})
                 print(f'Task fails to collect object state.')
         print(f'Split {split_name} object states collection results: successes={len(out_splits[split_name])}, fails={len(failed_splits[split_name])}, total={tot_ct[split_name]}')
@@ -408,7 +408,7 @@ if __name__ == "__main__":
     parser.add_argument('--data', help='dataset folder', default='/root/data_alfred/demo_generated/new_trajectories')
     parser.add_argument('--raw_splits', help='json file containing raw splits coming directly out from planner.', default='/root/data_alfred/splits/demo_june13_raw.json')
     parser.add_argument('--reward_config', default='models/config/rewards.json')
-    parser.add_argument('--first_task_only', action='store_true', help='only process the first task loaded.')
+    parser.add_argument('--first_task_only', action='store_true', help='only process the first task loaded for each split.')
 
     # rollout
     parser.add_argument('--max_fails', type=int, default=10, help='max API execution failures before episode termination')
@@ -423,3 +423,4 @@ if __name__ == "__main__":
     parse_args.PLANNER_TIME_STAMP = re.findall('new_trajectories_T(.*)/', parse_args.data)[0]
 
     main(parse_args)
+    

@@ -13,11 +13,11 @@ from gen.utils.image_util import decompress_mask
 
 class Module(Base):
 
-    def __init__(self, args, vocab):
+    def __init__(self, args, vocab, object_vocab=None):
         '''
         Seq2Seq agent
         '''
-        super().__init__(args, vocab)
+        super().__init__(args, vocab, object_vocab=None)
 
         # encoder and self-attention
         self.enc = nn.LSTM(args.demb, args.dhid, bidirectional=True, batch_first=True)

@@ -22,12 +22,16 @@ class Module(Base):
         '''
         super().__init__(args, vocab, object_vocab)
 
+        self.predict_high_level_goal = args.predict_high_level_goal
+
         # encoder and self-attention
         encoder = vnn.ActionFrameAttnEncoderFullSeq
-        self.enc = encoder( self.emb_action_low, args.dframe, args.dhid,
+        self.enc = encoder( emb=self.emb_action_low,
+                            dframe=args.dframe,
+                            dhid=args.dhid,
                             act_dropout=args.act_dropout,
                             vis_dropout=args.vis_dropout,
-                            bidirectional=True)
+                            bidirectional=True)   
 
         # language decoder
         decoder = vnn.LanguageDecoder
@@ -79,7 +83,7 @@ class Module(Base):
             # serialize segments
             self.serialize_lang_action(ex)
             
-            if not self.test_mode: 
+            if not (self.test_mode or self.demo_mode): 
                 # goal and instr language
                 lang_goal, lang_instr = ex['num']['lang_goal'], ex['num']['lang_instr']
                 
@@ -87,11 +91,12 @@ class Module(Base):
                 lang_goal = self.zero_input(lang_goal) if self.args.zero_goal else lang_goal
                 lang_instr = self.zero_input(lang_instr) if self.args.zero_instr else lang_instr
                 
-                # # append goal
-                # feat['lang_goal'].append(lang_goal)
-                
-                # append instr
-                feat['lang_instr'].append(lang_instr)
+                if self.predict_high_level_goal:
+                    # append goal
+                    feat['lang_instr'].append(lang_goal)
+                else:
+                    # append instr
+                    feat['lang_instr'].append(lang_instr)
                 
                 # append goal + instr
                 # lang_goal_instr = lang_goal + lang_instr
@@ -169,10 +174,10 @@ class Module(Base):
         '''
         append segmented instr language and low-level actions into single sequences
         '''
-        is_serialized = not isinstance(feat['num']['lang_instr'][0], list)
+        is_serialized = not isinstance(feat['num']['action_low'][0], list)
         if not is_serialized:
             feat['num']['action_low'] = [a for a_group in feat['num']['action_low'] for a in a_group]
-            if not self.test_mode:
+            if not (self.test_mode or self.demo_mode):
                 feat['num']['lang_instr'] = [word for desc in feat['num']['lang_instr'] for word in desc]
 
     def forward(self, feat, max_decode=300, validate_teacher_forcing=False, validate_sample_output=False):
@@ -180,7 +185,8 @@ class Module(Base):
         cont_act, enc_act = self.enc(feat)
         # run decoder until entire sentence is finished
         state_0 = cont_act, torch.zeros_like(cont_act)
-        res, _ = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0, validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
+        # res, _ = self.dec(enc_act, max_decode=max_decode, gold=feat['lang_instr'], state_0=state_0, validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
+        res, _ = self.dec(enc_act, feat, max_decode=max_decode, state_0=state_0, validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
         feat.update(res)
         return feat
     
@@ -294,7 +300,10 @@ class Module(Base):
         # how does this work during training with teacher forcing !?
         m = collections.defaultdict(list)
 
-        flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
+        if self.predict_high_level_goal:
+            flatten_isntr = lambda instr: [word.strip() for word in instr]
+        else:
+            flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
 
         all_pred_id_ann = list(preds.keys())
         for task in data:
@@ -303,7 +312,10 @@ class Module(Base):
             # grab task data for ann_0, ann_1 and ann_2
             exs = self.load_task_jsons(task)
             # a list of 3 lists of word tokens. (1 for each human annotation, so total 3)
-            ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]            
+            if self.predict_high_level_goal:
+                ref_lang_instrs = [flatten_isntr(ex['ann']['goal']) for ex in exs]
+            else:
+                ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]    
             # compute bleu score
             m['BLEU'].append(sentence_bleu(ref_lang_instrs, preds[pred_id_ann]['lang_instr'].split(' ')))
             all_pred_id_ann.remove(pred_id_ann)

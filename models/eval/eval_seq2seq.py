@@ -22,13 +22,16 @@ if __name__ == '__main__':
     parser.add_argument('--splits', type=str, default="data/splits/oct21.json")
     parser.add_argument('--data', type=str, default="data/json_2.1.0")
     parser.add_argument('--reward_config', default='models/config/rewards.json')
-    parser.add_argument('--eval_split', type=str, default='valid_seen', choices=['train', 'valid_seen', 'valid_unseen'])
+    parser.add_argument('--eval_split', type=str, default='valid_seen', choices=['train', 'valid_seen', 'valid_unseen', 'demo'])
     parser.add_argument('--model_path', type=str, default="model.pth")
     parser.add_argument('--model', type=str, default='models.model.seq2seq_im_mask')
     parser.add_argument('--preprocess', dest='preprocess', action='store_true')
     parser.add_argument('--shuffle', dest='shuffle', action='store_true')
     parser.add_argument('--gpu', dest='gpu', action='store_true')
     parser.add_argument('--num_threads', type=int, default=1)
+
+    # mode
+    parser.add_argument('--demo_mode', action='store_true')
 
     # eval params
     parser.add_argument('--max_steps', type=int, default=1000, help='max steps before episode termination')
@@ -47,6 +50,10 @@ if __name__ == '__main__':
     # parse arguments
     args = parser.parse_args()
 
+    # demo mode
+    if args.demo_mode:
+        args.eval_split = 'demo'
+
     # eval mode
     if args.subgoals:
         eval = EvalSubgoals(args, manager)
@@ -54,4 +61,7 @@ if __name__ == '__main__':
         eval = EvalTask(args, manager)
 
     # start threads
-    eval.spawn_threads()
+    if args.num_threads > 1:
+        eval.spawn_threads()
+    else:
+        eval.run_main()

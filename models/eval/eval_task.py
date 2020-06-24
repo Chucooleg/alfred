@@ -5,6 +5,7 @@ from PIL import Image
 from datetime import datetime
 from models.eval.eval import Eval
 from env.thor_env import ThorEnv
+from gen.scripts.augment_trajectories import save_images_in_events
 
 class EvalTask(Eval):
     '''
@@ -12,7 +13,7 @@ class EvalTask(Eval):
     '''
 
     @classmethod
-    def run(cls, model, resnet, task_queue, args, lock, successes, failures, results):
+    def run(cls, model, resnet, task_queue, args, lock, successes, failures, results, demo_mode=False):
         '''
         evaluation loop
         '''
@@ -30,7 +31,7 @@ class EvalTask(Eval):
                 r_idx = task['repeat_idx']
                 print("Evaluating: %s" % (traj['root']))
                 print("No. of trajectories left: %d" % (task_queue.qsize()))
-                cls.evaluate(env, model, r_idx, resnet, traj, args, lock, successes, failures, results)
+                cls.evaluate(env, model, r_idx, resnet, traj, args, lock, successes, failures, results, demo_mode=demo_mode)
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -41,19 +42,20 @@ class EvalTask(Eval):
 
 
     @classmethod
-    def evaluate(cls, env, model, r_idx, resnet, traj_data, args, lock, successes, failures, results):
+    def evaluate(cls, env, model, r_idx, resnet, traj_data, args, lock, successes, failures, results, demo_mode=False):
         # reset model
         model.reset()
 
         # setup scene
         reward_type = 'dense'
-        cls.setup_scene(env, traj_data, r_idx, args, reward_type=reward_type)
+        cls.setup_scene(env, traj_data, r_idx, args, reward_type=reward_type, demo_mode=demo_mode)
 
         # extract language features
         feat = model.featurize([traj_data], load_mask=False)
 
         # goal instr
-        goal_instr = traj_data['turk_annotations']['anns'][r_idx]['task_desc']
+        ann_key = 'explainer_annotations' if demo_mode else 'turk_annotations'
+        goal_instr = traj_data[ann_key]['anns'][r_idx]['task_desc']
 
         done, success = False, False
         fails = 0
@@ -120,7 +122,8 @@ class EvalTask(Eval):
         plw_pc_spl = pc_spl * path_len_weight
 
         # log success/fails
-        lock.acquire()
+        if lock is not None:
+            lock.acquire()
         log_entry = {'trial': traj_data['task_id'],
                      'type': traj_data['task_type'],
                      'repeat_idx': int(r_idx),
@@ -165,7 +168,8 @@ class EvalTask(Eval):
             else:
                 results[task_type] = {}
 
-        lock.release()
+        if lock is not None:
+            lock.release()
 
     @classmethod
     def get_metrics(cls, successes, failures):
@@ -219,6 +223,7 @@ class EvalTask(Eval):
 
         save_path = os.path.dirname(self.args.model_path)
         save_path = os.path.join(save_path, 'task_results_' + self.args.eval_split + '_' + datetime.now().strftime("%Y%m%d_%H%M%S_%f") + '.json')
+        print('Saved results to :', save_path)
         with open(save_path, 'w') as r:
             json.dump(results, r, indent=4, sort_keys=True)
 

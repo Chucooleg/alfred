@@ -29,14 +29,17 @@ class Module(nn.Module):
         self.object_vocab = object_vocab
 
         # by 'instance' or 'type'
-        self.object_repr = args.object_repr
+        self.object_repr = None if args.predict_high_level_goal else args.object_repr
 
         # emb modules
         self.emb_word = nn.Embedding(len(vocab['word']), args.demb)
         self.emb_action_low = nn.Embedding(len(vocab['action_low']), args.demb)
-        self.emb_object = nn.Embedding(len(object_vocab['object_type']), args.dhid if self.object_repr == 'type' else args.demb, padding_idx=0)
+        if self.object_vocab is not None:
+            self.emb_object = nn.Embedding(len(object_vocab['object_type']), args.dhid if self.object_repr == 'type' else args.demb, padding_idx=0)
+        else:
+            self.emb_object = None
 
-        self.word_stop_token = self.vocab['word'].word2index("<<stop>>", train=False)
+        self.word_stop_token = self.vocab['word'].word2index("<<goal>>" if args.predict_high_level_goal else "<<stop>>", train=False)
         self.action_stop_token = self.vocab['action_low'].word2index("<<stop>>", train=False)
         # self.seg_token = self.vocab['action_low'].word2index("<<seg>>", train=False)  # obsolete?
 
@@ -546,10 +549,7 @@ class Module(nn.Module):
         '''
         single string for task_id and annotation repeat idx
         '''
-        if ('repeat_idx' in ex.keys()) and (ex['repeat_idx'] is not None):
-            return "%s_%s" % (ex['task_id'], str(ex['repeat_idx']))
-        else:
-            return ex['task_id']
+        return "%s_%s" % (ex['task_id'], str(ex['repeat_idx']))
 
     def make_debug(self, preds, data):
         '''
@@ -582,17 +582,18 @@ class Module(nn.Module):
         '''
         load preprocessed json from disk
         '''
-        if 'repeat_idx' in task.keys():
-            json_name = 'ann_%d.json' % task['repeat_idx'] 
+        if self.demo_mode:
+            json_name = 'demo_%d.json' % task['repeat_idx'] 
         else:
-            json_name = 'demo.json' 
+            json_name = 'ann_%d.json' % task['repeat_idx']
         json_path = os.path.join(self.args.data, task['task'], '%s' % self.args.pp_folder, json_name)
         retry = 0
         while True:
             try:
                 if retry > 0:
+                    import pdb; pdb.set_trace()
                     print ('retrying {}'.format(retry))
-                with open(json_path) as f:
+                with open(json_path, 'r') as f:
                     data = json.load(f)
                 return data
             except:
@@ -696,8 +697,10 @@ class Module(nn.Module):
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
         optimizer.load_state_dict(save['optim'])
         # handle iter and epoch 
-        next_epoch = int(save['epoch']) + 1        
-        next_iters = save['iters']
+        next_epoch = int(save['epoch']) + 1 if 'epoch' in save.keys() else 0
+        # TODO remove this hack
+        # next_iters = save['iters'] CORRECT
+        next_iters = save['iters'] if 'iters' in save.keys() else None # HACK
         return model, optimizer, next_epoch, next_iters
 
     @classmethod

@@ -65,3 +65,22 @@ python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --eval_split demo 
 python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --eval_split demo --data $DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --demo_mode --subgoals PickupObject
 
 python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --eval_split demo --data $DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --demo_mode --subgoals GotoLocation
+
+
+
+# 1.1 Python Query Task Tuple Interactively (Terminal)
+# 1.2 Python Make split (save out to split file)
+# 1.3 Python print Video URL link
+# 2.1.Script Call Explainers, Python run explainers
+# 3.1 Script Call Python to Launch tkinter to collect human traj
+# 4.1 Alfred Eval
+# 5.1 Human Eval
+
+#- Python query task tuple interactively 
+#- Build Task Tuple Look up
+#- main call that makes a split
+#- print video url
+#- run explainer at the same time
+#- Launch tkinter collect human traj
+
+#- Eval human traj

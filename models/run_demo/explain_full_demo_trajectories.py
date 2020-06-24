@@ -28,20 +28,40 @@ def load_task_json(model, task):
     '''
     load preprocessed demo json from disk
     '''    
-    json_path = os.path.join(model.args.data, task['task'], '%s' % model.args.pp_folder, 'demo.json')
+    json_path = os.path.join(model.args.data, task['task'], '%s' % model.args.pp_folder, "demo_%d.json" % task['repeat_idx'])
     retry = 0
     while True:
         try:
             if retry > 0:
-                print ('retrying {}'.format(retry))
-            with open(json_path) as f:
+                import pdb; pdb.set_trace()
+                print ('load task retrying {}'.format(retry))
+            with open(json_path, 'r') as f:
                 data = json.load(f)
             return data
         except:
             retry += 1
             time.sleep(5)
             pass
-    
+
+def overwrite_task_json(model, task, ex):
+    '''
+    overwrite traj json data with predicted language included.
+    '''
+    json_path = os.path.join(model.args.data, task['task'], 'traj_data.json')
+    retry = 0
+    while True:
+        try:
+            if retry > 0:
+                print ('load task for rewrite retrying {}'.format(retry))
+            with open(json_path, 'w') as f:
+                json.dump(ex, f)
+            return
+        except:
+            retry += 1
+            time.sleep(5)
+            pass
+      
+
 def validate_vocab(args, model, level='low'):
     # validate language vocab
     if level == 'high' and args.high_level_explainer_checkpt_path == 'None':
@@ -70,7 +90,7 @@ def run_demo_pred(split, model, batch_size):
         p_split.update(preds)
     return p_split   
 
-def make_demo_output(preds, data, model):
+def make_demo_output(preds, data, model, level='low'):
     '''
     make language output for demo
     '''
@@ -80,32 +100,57 @@ def make_demo_output(preds, data, model):
         # just the task_id 'traj_T...'
         i = model.get_task_and_ann_id(ex)
         outputs[i] = {'p_lang_instr': preds[i]['lang_instr']}
+        print(f'\n\n\n\nTASK {i} {level} level: {preds[i]["lang_instr"]}\n\n')
     return outputs
 
+def write_ann_to_traj(preds, data, model, level='low'):
+    '''write predicted language back to trajectory on disk'''
+
+    assert level in ['low', 'high']
+
+    for task in data:
+        ex = load_task_json(model, task)
+        i = model.get_task_and_ann_id(ex)
+        if 'explainer_annotations' not in ex.keys():
+            ex['explainer_annotations'] = {'anns':[{'task_desc':'', 'high_descs':[]}]}
+
+        if level == 'low':
+            num_subgoal = max(preds[i]['lang_instr'].keys()) + 1
+            ex['explainer_annotations']['anns'][0]['high_descs'] = [preds[i]['lang_instr'][subgoal_j] for subgoal_j in range(num_subgoal)]
+        else:
+            ex['explainer_annotations']['anns'][0]['task_desc'] = preds[i]['lang_instr']
+        
+        overwrite_task_json(model, task, ex)
+
+
 def pred_and_save(split, split_name, model, batch_size, dout, level='low', debug=False):
-        assert level in ['low', 'high']
+    assert level in ['low', 'high']
 
-        print(f'Processing {split_name} split with {level} level explainer model.')
+    print(f'Processing {split_name} split with {level} level explainer model.')
 
-        # model make predictions
-        split_preds = run_demo_pred(split, model, batch_size)
-        # make language output for demo
-        split_outputs = make_demo_output(split_preds, split, model)
-        # save outputs to path for next step in pipeline
-        # /data_alfred/demo_generated/new_trajectories/dout_explainer_low_{}_high_{}/{split}_{level}_output_preds.json
-        pred_out_path = os.path.join(dout, f'{split_name}_{level}_output_preds.json')
-        with open(pred_out_path, 'w') as f:
-            json.dump(split_outputs, f)
-        print(f'Saving {level} level language instruction outputs for demo to {pred_out_path}')
+    # model make predictions
+    split_preds = run_demo_pred(split, model, batch_size)
+    # make language output for demo
+    split_outputs = make_demo_output(split_preds, split, model, level)
+    # save outputs to path for next step in pipeline
+    # /data_alfred/demo_generated/new_trajectories/dout_explainer_low_{}_high_{}/{split}_{level}_output_preds.json
+    pred_out_path = os.path.join(dout, f'{split_name}_{level}_output_preds.json')
+    with open(pred_out_path, 'w') as f:
+        json.dump(split_outputs, f)
+    print(f'Saving {level} level language instruction outputs for demo to {pred_out_path}')
 
-        # make file to debug predictions for 
-        # input, lang, attn, aux targets, ...
-        if debug:
-            split_debugs = model.make_debug(split_preds, split)
-            pred_debug_path = os.path.join(dout, f'{split_name}_{level}_debug_preds.json')
-            with open(pred_debug_path, 'w') as f:
-                json.dump(split_debugs, f)
-            print(f'Saving {level} level debug outputs for demo to {pred_debug_path}')
+    # write predicted language back to trajectory on disk
+    write_ann_to_traj(split_preds, split, model, level)
+    print(f'Overwrote traj data on disk with {level} level language instruction included.')
+
+    # make file to debug predictions for 
+    # input, lang, attn, aux targets, ...
+    if debug:
+        split_debugs = model.make_debug(split_preds, split)
+        pred_debug_path = os.path.join(dout, f'{split_name}_{level}_debug_preds.json')
+        with open(pred_debug_path, 'w') as f:
+            json.dump(split_debugs, f)
+        print(f'Saving {level} level debug outputs for demo to {pred_debug_path}')
 
 @torch.no_grad()
 def main(args, splits, low_level_model, high_level_model=None):
@@ -116,9 +161,9 @@ def main(args, splits, low_level_model, high_level_model=None):
     # Run low level explainer for splits
     for split_name in splits.keys():
         split = splits[split_name]
-        pred_and_save(split, split_name, low_level_model, args.batch, args.dout, level='low', debug=args.debug)
         if high_level_model is not None:
             pred_and_save(split, split_name, high_level_model, args.batch, args.dout, level='high', debug=args.debug)
+        pred_and_save(split, split_name, low_level_model, args.batch, args.dout, level='low', debug=args.debug)
 
 
 if __name__ == '__main__':
@@ -140,6 +185,7 @@ if __name__ == '__main__':
 
     # args and init
     args = parser.parse_args()
+    args.predict_high_level_goal = False
     torch.manual_seed(args.seed)
 
     print('Input args:')
@@ -180,6 +226,7 @@ if __name__ == '__main__':
     high_level_model = None
     if args.high_level_explainer_checkpt_path != 'None':
         print(f'Loading high-level Explainer Model module : {high_module}')
+        args.predict_high_level_goal = True
         M_high = import_module('model.{}'.format(high_module))
         # load model checkpoint, override path related arguments
         high_level_model, _, _, _ = M_high.Module.load(

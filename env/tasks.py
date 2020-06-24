@@ -1,3 +1,8 @@
+import os
+import sys
+# sys.path.append(os.path.join(os.environ['ALFRED_ROOT']))
+sys.path.append(os.path.join(os.environ['ALFRED_ROOT'], 'gen'))
+
 import json
 import numpy as np
 from graph import graph_obj
