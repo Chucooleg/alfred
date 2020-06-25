@@ -158,6 +158,7 @@ class InstrDisplay(threading.Thread):
 
     def run(self):
         self.display_note_gui()
+        print('DEBUG -- finished display_note_gui')
 
 
 
@@ -171,6 +172,7 @@ class HumanEval(object):
 
         self.instr_display = InstrDisplay(1, "Instructions")
         self.instr_display.start()
+        print('DEBUG -- started instr display')
 
         self.interface.select_object = ""
         self.frame_window_name = "Select"
@@ -183,6 +185,7 @@ class HumanEval(object):
             self.splits = json.load(f)
 
         random.seed(self.args.seed)
+        print('DEBUG -- finished human eval setup')
 
 
     # def get_tasks(self):
@@ -201,7 +204,8 @@ class HumanEval(object):
 
     def get_tasks(self):
 
-        demo_files = self.splits['demo']
+        k = list(self.splits.keys())[0]
+        demo_files = self.splits[k]
         sample_size = max(1, int(len(demo_files) * self.args.fraction))
 
         demo_files = random.sample(demo_files, sample_size)
@@ -473,9 +477,12 @@ class HumanEval(object):
             self.eval_task(t)
             self.save_results()
 
+        print('DEBUG -- start thor env')
         self.env = ThorEnv(player_screen_height=self.args.window_size,
                       player_screen_width=self.args.window_size)
+        print('DEBUG -- start interace with env')
         self.interface.set_env(self.env)
+        print('DEBUG -- finished interface set env')
 
         if args.resume:
             num_completed_tasks = self.load_results()
@@ -525,4 +532,5 @@ if __name__ == '__main__':
 
     # human eval
     human_eval = HumanEval(args)
+    print('DEBUG -- finished human initialization')
     human_eval.run()

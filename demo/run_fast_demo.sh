@@ -25,11 +25,16 @@ export EVAL_DATA_FILE=$(ls $EVAL_DATA_ROOT | grep -i 'new_trajectories*' | tail 
 export EVAL_DATA=$EVAL_DATA_ROOT/$EVAL_DATA_FILE
 
 # eval alfred
-cd $ALFRED_ROOT/
-python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --preprocess --demo_mode
+# cd $ALFRED_ROOT/
+# python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --preprocess --demo_mode
+# python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --demo_mode --subgoals PickupObject
+# python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --demo_mode --subgoals GotoLocation
 
-python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --demo_mode --subgoals PickupObject
+echo 'SPLITS', $SPLITS
+echo 'EVAL DATA', $EVAL_DATA
 
-python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --demo_mode --subgoals GotoLocation
+cd $ALFRED_ROOT
+# python interface.py --split $SPLITS --data $EVAL_DATA
+# python interface.py --split /root/data_alfred/splits//demo_T20200624_162008_674795.json --data /root/data_alfred/demo_generated//new_trajectories_T20200624_162008_674795 --window_size 900 &
 
 echo 'Pipeline finihsed.'

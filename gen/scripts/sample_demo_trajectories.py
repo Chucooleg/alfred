@@ -571,7 +571,7 @@ def parallel_main(args):
     finally:
         for proc in procs:
             proc.join()
-        subprocess.call(["pkill", "-f", 'thor'])
+        subprocess.call(["pkill", "-f", 'thor'])  # pkill -SIGKILL thor
 
 
 if __name__ == "__main__":
