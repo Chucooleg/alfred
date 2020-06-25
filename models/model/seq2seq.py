@@ -688,7 +688,10 @@ class Module(nn.Module):
         '''
         load pth model from disk
         '''
-        save = torch.load(fsave)
+        if torch.cuda.is_available():
+            save = torch.load(fsave)
+        else:
+            save = torch.load(fsave, map_location=torch.device('cpu'))
         saved_args = save['args']
         for k ,v in overwrite_args.items():
             setattr(saved_args, k, v)
