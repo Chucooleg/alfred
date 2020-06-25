@@ -1,11 +1,12 @@
 export DATA_ROOT=$1
-export ALFRED_ROOT=$2
-export MODEL_DIR=$3
-export USE_GPU=$4
+export DATA=$2
+export ALFRED_ROOT=$3
+export MODEL_DIR=$4
+export USE_GPU=$5
 
-export DATA=$DATA_ROOT/data_alfred/json_feat_2.1.0
-export EVAL_DATA_ROOT=$DATA_ROOT/data_alfred/demo_generated/
-export SPLITS_ROOT=$DATA_ROOT/data_alfred/splits/
+export DATA=$DATA_ROOT/$DATA
+export EVAL_DATA_ROOT=$DATA_ROOT/demo_generated/
+export SPLITS_ROOT=$DATA_ROOT/splits/
 export EXPLAINER=$MODEL_DIR/model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce_1to2/net_epoch_32.pth
 export GOAL_EXPLAINER=$MODEL_DIR/model:seq2seq_nl_with_frames,name:v1.5_epoch_50_high_level_instrs/net_epoch_10.pth
 export ALFRED_AGENT=$MODEL_DIR/pretrained_model/model:seq2seq_im_mask,name:base30_pm010_sg010_01/best_seen.pth
@@ -13,7 +14,7 @@ export ALFRED_AGENT=$MODEL_DIR/pretrained_model/model:seq2seq_im_mask,name:base3
 
 cd $ALFRED_ROOT
 # query task tuple and make new split
-python demo/query_and_make_split.py
+python demo/query_and_make_split.py --data $DATA --splits $SPLITS_ROOT
 
 # extract lastest split file name
 export SPLITS_FILE=$(ls $SPLITS_ROOT | grep -i 'demo_*' | tail -n 1)
