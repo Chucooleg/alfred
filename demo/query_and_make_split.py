@@ -105,5 +105,5 @@ if __name__ == "__main__":
         json.dump(new_split, f)
     if args.debug:
         print('Made new split file',new_split_path)
-    time.sleep(1)
+    time.sleep(2)
     print('-------------------------------------------------------------------------------')
