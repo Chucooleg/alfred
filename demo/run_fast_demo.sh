@@ -24,10 +24,10 @@ export SPLITS=$SPLITS_ROOT/$SPLITS_FILE
 cd $ALFRED_ROOT
 if [ $USE_GPU == 'gpu' ] ; then
     echo 'Using gpu'
-  python models/run_demo/explain_fast_demo_trajectories.py --data $DATA --splits $SPLITS --low_level_explainer_checkpt_path $EXPLAINER --high_level_explainer_checkpt_path $GOAL_EXPLAINER --gpu
+  python models/run_demo/explain_fast_demo_trajectories.py --data $DATA --dout $EVAL_DATA_ROOT --splits $SPLITS --low_level_explainer_checkpt_path $EXPLAINER --high_level_explainer_checkpt_path $GOAL_EXPLAINER --gpu
 else
     echo 'Not using gpu'
-  python models/run_demo/explain_fast_demo_trajectories.py --data $DATA --splits $SPLITS --low_level_explainer_checkpt_path $EXPLAINER --high_level_explainer_checkpt_path $GOAL_EXPLAINER
+  python models/run_demo/explain_fast_demo_trajectories.py --data $DATA --dout $EVAL_DATA_ROOT --splits $SPLITS --low_level_explainer_checkpt_path $EXPLAINER --high_level_explainer_checkpt_path $GOAL_EXPLAINER
 fi
 
 export EVAL_DATA_FILE=$(ls $EVAL_DATA_ROOT | grep -i 'new_trajectories*' | tail -n 1)
