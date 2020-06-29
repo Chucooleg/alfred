@@ -24,9 +24,9 @@ class ThorEnv(Controller):
                  player_screen_height=constants.DETECTION_SCREEN_HEIGHT,
                  player_screen_width=constants.DETECTION_SCREEN_WIDTH,
                  quality='MediumCloseFitShadows',
-                 build_path=constants.BUILD_PATH):
+                 build_path=constants.BUILD_PATH, headless=False):
 
-        super().__init__(quality=quality)
+        super().__init__(quality=quality, headless=headless)
         self.local_executable_path = build_path
         self.start(x_display=x_display,
                    player_screen_height=player_screen_height,
@@ -491,7 +491,6 @@ class ThorEnv(Controller):
         '''
         interact mask based action call
         '''
-
         all_ids = []
 
         if type(interact_mask) is str and interact_mask == "NULL":

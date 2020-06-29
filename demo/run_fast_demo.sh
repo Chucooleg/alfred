@@ -32,18 +32,28 @@ fi
 
 export EVAL_DATA_FILE=$(ls $EVAL_DATA_ROOT | grep -i 'new_trajectories*' | tail -n 1)
 export EVAL_DATA=$EVAL_DATA_ROOT/$EVAL_DATA_FILE
+printf $EVAL_DATA
+printf $SPLITS
 
-# eval alfred
-# cd $ALFRED_ROOT/
-# python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --preprocess --demo_mode
-# python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --demo_mode --subgoals PickupObject
-# python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --demo_mode --subgoals GotoLocation
+# # eval alfred
+# # cd $ALFRED_ROOT/
+# # python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --preprocess --demo_mode
+# # python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --demo_mode --subgoals PickupObject
+# # python models/eval/eval_seq2seq.py --model_path $ALFRED_AGENT --data $EVAL_DATA --splits $SPLITS --model models.model.seq2seq_im_mask --gpu --demo_mode --subgoals GotoLocation
 
-printf 'SPLITS', $SPLITS
-echo 'EVAL DATA', $EVAL_DATA
+cd $ALFRED_ROOT/../alfred_human_eval
+python interface.py --split $SPLITS --data $EVAL_DATA --window_size 800
+# # python interface.py --split /root/data_alfred/splits//demo_T20200624_162008_674795.json --data /root/data_alfred/demo_generated//new_trajectories_T20200624_162008_674795 --window_size 900 &
 
-cd $ALFRED_ROOT
-python interface.py --split $SPLITS --data $EVAL_DATA
-# python interface.py --split /root/data_alfred/splits//demo_T20200624_162008_674795.json --data /root/data_alfred/demo_generated//new_trajectories_T20200624_162008_674795 --window_size 900 &
+# printf 'Pipeline finihsed.'
 
-printf 'Pipeline finihsed.'
+
+# export DATA_ROOT=/data_alfred
+# export SPLITS_ROOT=$DATA_ROOT/splits/
+# export SPLITS_FILE=$(ls $SPLITS_ROOT | grep -i 'demo_*' | tail -n 1)
+# export SPLITS=$SPLITS_ROOT/$SPLITS_FILE
+# export EVAL_DATA_ROOT=$DATA_ROOT/demo_generated/
+# export EVAL_DATA_FILE=$(ls $EVAL_DATA_ROOT | grep -i 'new_trajectories*' | tail -n 1)
+# export EVAL_DATA=$EVAL_DATA_ROOT/$EVAL_DATA_FILE
+# cd $ALFRED_ROOT/../alfred_human_eval
+# python interface.py --split $SPLITS --data $EVAL_DATA --window_size 800
