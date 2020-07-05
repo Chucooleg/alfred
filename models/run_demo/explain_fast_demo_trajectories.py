@@ -71,7 +71,6 @@ def overwrite_task_json(args, model, task, ex):
             time.sleep(5)
             pass
       
-
 def validate_vocab(args, model, level='low'):
     # validate language vocab
     if level == 'high' and args.high_level_explainer_checkpt_path == 'None':
@@ -163,6 +162,8 @@ def pred_and_save(args, split, split_name, model, batch_size, dout, level='low',
             json.dump(split_debugs, f)
         print(f'Saving {level} level debug outputs for demo to {pred_debug_path}')
 
+    return split_outputs
+
 @torch.no_grad()
 def main(args, splits, low_level_model, high_level_model=None):
     
@@ -173,9 +174,10 @@ def main(args, splits, low_level_model, high_level_model=None):
     for split_name in splits.keys():
         split = splits[split_name]
         if high_level_model is not None:
-            pred_and_save(args, split, split_name, high_level_model, args.batch, args.dout, level='high', debug=args.debug)
-        pred_and_save(args, split, split_name, low_level_model, args.batch, args.dout, level='low', debug=args.debug)
+            split_outputs_high = pred_and_save(args, split, split_name, high_level_model, args.batch, args.dout, level='high', debug=args.debug)
+        split_outputs_low = pred_and_save(args, split, split_name, low_level_model, args.batch, args.dout, level='low', debug=args.debug)
 
+    return split_outputs_high, split_outputs_low
 
 if __name__ == '__main__':
     # parser
@@ -261,4 +263,4 @@ if __name__ == '__main__':
             high_level_model = high_level_model.to(torch.device('cuda'))
 
     # run evaluation
-    main(args, splits, low_level_model, high_level_model)
+    _, _ = main(args, splits, low_level_model, high_level_model)

@@ -688,7 +688,7 @@ class Module(nn.Module):
         '''
         load pth model from disk
         '''
-        if torch.cuda.is_available():
+        if overwrite_args is True:
             save = torch.load(fsave)
         else:
             save = torch.load(fsave, map_location=torch.device('cpu'))

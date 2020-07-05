@@ -7,6 +7,16 @@ import time
 from datetime import datetime
 from functools import partial
 
+import re
+import pprint
+
+import sys
+sys.path.append(os.path.join(os.environ['ALFRED_ROOT']))
+sys.path.append(os.path.join(os.environ['ALFRED_ROOT'], 'models'))
+
+from models.run_demo import explain_fast_demo_trajectories as explain
+from importlib import import_module
+
 import threading
 import tkinter as tk
 from tkinter import ttk
@@ -31,19 +41,84 @@ class DevInterface():
     # (Pdb) new_split
     # {'valid_unseen': [{'task': 'pick_two_obj_and_place-AppleSliced-None-CounterTop-10/trial_T20190907_061347_004735', 'repeat_idx': 0}]}
 
+    def load_explainers(self):
+        self.args.predict_high_level_goal = False
+        self.args.fast_epoch = False
+        self.args.batch = 8
+        self.args.preprocess = False
+
+        # e.g. model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce_1to2
+        low_mod_name = re.findall('(model:.*,name.*)/', self.args.low_level_explainer_checkpt_path)[0]
+        high_mod_name = re.findall('(model:.*,name.*)/', self.args.high_level_explainer_checkpt_path)[0] if self.args.high_level_explainer_checkpt_path != 'None' else 'None' 
+
+        # load models modules
+        # e.g. seq2seq_per_subgoal
+        low_module = re.findall('model:(.*),name:', self.args.low_level_explainer_checkpt_path)[0]
+        high_module = re.findall('model:(.*),name:', self.args.high_level_explainer_checkpt_path)[0] if self.args.high_level_explainer_checkpt_path != 'None' else 'None'
+
+        # load low-level model
+        print(f'Loading low-level Explainer Model module : {low_module}')
+        M_low = import_module('model.{}'.format(low_module))
+
+        # load model checkpoint, override path related arguments
+        low_level_model, _, _, _ = M_low.Module.load(
+            self.args.low_level_explainer_checkpt_path, explain.make_overrride_args(self.args, 'low'))
+        low_level_model.demo_mode = True
+
+        # load high-level model
+        high_level_model = None
+        if self.args.high_level_explainer_checkpt_path != 'None':
+            print(f'Loading high-level Explainer Model module : {high_module}')
+            self.args.predict_high_level_goal = True
+            M_high = import_module('model.{}'.format(high_module))
+            # load model checkpoint, override path related arguments
+            high_level_model, _, _, _ = M_high.Module.load(
+                self.args.high_level_explainer_checkpt_path, explain.make_overrride_args(args, 'high'))
+            high_level_model.demo_mode = True
+
+        # to gpu
+        if self.args.gpu:
+            low_level_model = low_level_model.to(torch.device('cuda'))
+            if args.high_level_explainer_checkpt_path != 'None':
+                high_level_model = high_level_model.to(torch.device('cuda'))
+
+        return low_level_model, high_level_model
+
     def retrieve_human_annotation(self, new_split_path, new_split):
         tar_split = list(new_split.keys())[0]
         raw_traj_path = os.path.join(self.args.data, tar_split, new_split[tar_split][0]['task'], 'traj_data.json')
         with open(raw_traj_path, 'r') as f:
             ann = json.load(f)['turk_annotations']['anns'][0]
-        ann_formatted = ann['task_desc'] + '\n\n' + '\n'.join(ann['high_descs'])        
+        ann_formatted = ann['task_desc'] + '\n\n' + '\n'.join(ann['high_descs'])       
         return ann_formatted
 
     def run_baseline_prediction(self, new_split_path, new_split):
-        pass
+        return ''
 
     def run_explainer(self, new_split_path, new_split):
-        pass
+        # e.g. /root/data_alfred/demo_generated/new_trajectories_T***.json
+        TIME_STAMP = re.findall('.*T(.*).json', new_split_path)[0]
+
+        # data_alfred/demo_generated/new_trajectories_T.../
+        self.args.dout = os.path.join(self.args.dout, f'new_trajectories_T{TIME_STAMP}')
+        if not os.path.isdir(self.args.dout):
+            print (f'Output directory: {self.args.dout}') 
+            os.makedirs(self.args.dout)      
+
+        low_level_model, high_level_model = self.load_explainers()
+
+        # load train/valid/tests splits
+        with open(new_split_path) as f:
+            splits = json.load(f)
+            pprint.pprint({k: len(v) for k, v in splits.items()})   
+
+        # call explainer
+        output_instr = explain.main(self.args, splits, low_level_model, high_level_model)
+        high_instr = list(output_instr[0].values())[0]['p_lang_instr']
+        low_instr = list(list(output_instr[1].values())[0]['p_lang_instr'].values())
+        explainer_prediction = high_instr + '\n\n' + '\n'.join(low_instr)
+
+        return explainer_prediction
 
     def main_app(self):
         self.query_root = tk.Tk()
@@ -201,16 +276,25 @@ class DevInterface():
 
     def run(self):
         self.main_app()
-       
+
+def main(args):
+    save = pickle.load( open( "demo/task_lookup.p", "rb" ) )
+    dev_interface = DevInterface(save, args)
+    dev_interface.run()
 
 if __name__ == '__main__':
 
     parser = ArgumentParser()
     parser.add_argument('--data', help='dataset folder', default='/data_alfred/json_demo_cache/')
+    parser.add_argument('--dout', help='dataset folder', default='/data_alfred/demo_generated/')
     parser.add_argument('--splits', help='dataset folder', default='/data_alfred/splits/')
+    
+    parser.add_argument('--low_level_explainer_checkpt_path', help='path to model checkpoint', default='/data_alfred/exp_all/model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce_1to2/net_epoch_32.pth')
+    parser.add_argument('--high_level_explainer_checkpt_path', help='path to model checkpoint', default='/data_alfred/exp_all/model:seq2seq_nl_with_frames,name:v1.5_epoch_50_high_level_instrs/net_epoch_10.pth')
+    parser.add_argument('--gpu', help='use gpu', action='store_true')
+
     parser.add_argument('--debug', action='store_true')
+
     args = parser.parse_args()
 
-    save = pickle.load( open( "demo/task_lookup.p", "rb" ) )
-    dev_interface = DevInterface(save, args)
-    dev_interface.run()
+    main(args)
