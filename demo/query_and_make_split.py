@@ -216,23 +216,51 @@ class DevInterface():
             return new_split_path, new_split  
 
         def generate_game_preview():
+
             # launch new game window
-            # TODO
-            # call new process?
+            last_traj_dir = sorted(os.listdir(self.args.eval_data_root))[-1]
+            eval_data = os.path.join(self.args.eval_data_root, last_traj_dir)
+            assert os.path.exists(eval_data)
+
+            last_split_dirs = sorted(os.listdir(self.args.splits))
+            last_split_dir = last_split_dirs[-2]
+            split_file = os.path.join(self.args.splits, last_split_dir)
+            assert os.path.exists(split_file)
+
+            # call subprocess
+            print('eval_data', eval_data)
+            game_call_str = f'python ../alfred_human_eval/interface.py --split {split_file} --data {eval_data} --window_size 800'
+            # game_call_str = 'pwd'
+            subprocess.run(game_call_str, shell=True, check=True)
+
+            self.query_root.quit()
             pass
 
 
         # -------------------
         skills_list = ['{}. {}'.format(skill_i, self.save["skill_set"][skill_i]) for skill_i in sorted(self.save["skill_set"])]
         skill_row = tk.Frame(self.query_root)
-        skill_lab = tk.Label(skill_row, text='Choose a skill to learn', anchor='w', font=("Helvetica", self.font_size))
+        skill_lab = tk.Label(skill_row, text='I want to teach', anchor='w', font=("Helvetica", self.font_size))
         skill_ent = ttk.Combobox(skill_row, width=50, value=skills_list, font=("Helvetica", self.box_size))
 
         skill_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
         skill_lab.pack(side=tk.LEFT)
         skill_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
         self.entries['skill'] = skill_ent
-        # -------------------
+        # ---------------------------------------------------------
+        # # option 1 TODO 
+        # scene_typ_row = tk.Frame(self.query_root)
+        # scene_typ_lab = tk.Label(pickup_object_row, text='Choose an object to pickup', anchor='w', font=("Helvetica", self.font_size))
+        # scene_typ_ent = ttk.Combobox(pickup_object_row, width=50, font=("Helvetica", self.box_size))
+
+        # pickup_object_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        # pickup_object_lab.pack(side=tk.LEFT)
+        # pickup_object_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
+        # self.entries['pickupObject'] = pickup_object_ent
+        # self.entries['pickupObject'].bind('<Button-1>', skill_callback)
+
+        # ---------------------------------------------------------
+        # option 2
         pickup_object_row = tk.Frame(self.query_root)
         pickup_object_lab = tk.Label(pickup_object_row, text='Choose an object to pickup', anchor='w', font=("Helvetica", self.font_size))
         pickup_object_ent = ttk.Combobox(pickup_object_row, width=50, font=("Helvetica", self.box_size))
@@ -306,6 +334,8 @@ if __name__ == '__main__':
     
     parser.add_argument('--baseline_low_level_explainer_checkpt_dir', help='path to model checkpoint directory', default='/data_alfred/exp_all/model:seq2seq_nl_baseline,name:v0_epoch_50_low_level_instrs')
     parser.add_argument('--baseline_high_level_explainer_checkpt_dir', help='path to model checkpoint directory', default='/data_alfred/exp_all/model:seq2seq_nl_baseline,name:v0.5_epoch_50_high_level_instrs')
+
+    parser.add_argument('--eval_data_root', help='dataset folder', default='/data_alfred/demo_generated/')
 
     parser.add_argument('--gpu', help='use gpu', action='store_true')
 
