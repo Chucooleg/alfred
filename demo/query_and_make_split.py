@@ -93,7 +93,19 @@ class DevInterface():
         return ann_formatted
 
     def run_baseline_prediction(self, new_split_path, new_split):
-        return ''
+        tar_split = list(new_split.keys())[0]
+        retrieval_traj_id = new_split[tar_split][0]['task'].split('/')[-1] + '_0'
+
+        high_res_file = os.path.join(self.args.baseline_high_level_explainer_checkpt_dir, f'{tar_split}_argmax.debug_epoch_20.preds.json')
+        low_res_file = os.path.join(self.args.baseline_low_level_explainer_checkpt_dir, f'{tar_split}_argmax.debug_epoch_20.preds.json')
+        
+        with open(high_res_file, 'r') as f:
+            high_res = json.load(f)[retrieval_traj_id]['p_lang_instr'].replace(' .', '.')
+        with open(low_res_file, 'r') as f:
+            low_res = json.load(f)[retrieval_traj_id]['p_lang_instr'].split(' . ')
+
+        baseline_prediction = high_res + '\n\n' + ' .\n'.join(low_res)
+        return baseline_prediction
 
     def run_explainer(self, new_split_path, new_split):
         # e.g. /root/data_alfred/demo_generated/new_trajectories_T***.json
@@ -291,6 +303,10 @@ if __name__ == '__main__':
     
     parser.add_argument('--low_level_explainer_checkpt_path', help='path to model checkpoint', default='/data_alfred/exp_all/model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce_1to2/net_epoch_32.pth')
     parser.add_argument('--high_level_explainer_checkpt_path', help='path to model checkpoint', default='/data_alfred/exp_all/model:seq2seq_nl_with_frames,name:v1.5_epoch_50_high_level_instrs/net_epoch_10.pth')
+    
+    parser.add_argument('--baseline_low_level_explainer_checkpt_dir', help='path to model checkpoint directory', default='/data_alfred/exp_all/model:seq2seq_nl_baseline,name:v0_epoch_50_low_level_instrs')
+    parser.add_argument('--baseline_high_level_explainer_checkpt_dir', help='path to model checkpoint directory', default='/data_alfred/exp_all/model:seq2seq_nl_baseline,name:v0.5_epoch_50_high_level_instrs')
+
     parser.add_argument('--gpu', help='use gpu', action='store_true')
 
     parser.add_argument('--debug', action='store_true')
