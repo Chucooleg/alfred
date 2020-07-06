@@ -28,6 +28,16 @@ import subprocess
 # class DevInterface(threading.Thread):
 class DevInterface():
     fields = ['skill_int', 'pickupObject_int', 'movable_int', 'receptacle_int', 'scene_int']
+    skill_map = {
+        'Random Choice':'Random Choice', 
+        'look_at_obj_in_light':'Examine item in light', 
+        'pick_heat_then_place_in_recep':'Find, heat up and place item', 
+        'pick_clean_then_place_in_recep':'Find, clean and place item',
+        'pick_and_place_with_movable_recep': 'Find and place item with a container',
+        'pick_and_place_simple': 'Find and place item',
+        'pick_two_obj_and_place': 'Find and place two items',
+        'pick_cool_then_place_in_recep': 'Find, cool and place item'
+        }
     box_size = 15
     font_size = 15
 
@@ -135,17 +145,35 @@ class DevInterface():
     def main_app(self):
         self.query_root = tk.Tk()
         self.entries = {}
-        self.query_root.title('Skill Teaching Tool')
+        self.query_root.title('Skill Teaching Tool For Game Developer')
 
         def skill_callback(eventObject):
             abc = eventObject.widget.get()
             skill_str = self.entries['skill'].get()
             self.choices['skill_int'] = skill_str.split('. ')[0]
             if self.choices['skill_int'] == '0':
-                self.choices['skill_int'] = str(random.randint(1, 7)) 
-            self.pickup_object_idxs = sorted([int(idx) for idx in self.save['lookup'][self.choices['skill_int']].keys()])
-            pickup_object_list = ['{}. {}'.format(idx, self.save["pickupObject_set"][idx]) for idx in self.pickup_object_idxs]
-            self.entries['pickupObject'].config(values=pickup_object_list) 
+                self.choices['skill_int'] = str(random.randint(1, 7))
+            self.scene_type_idxs = sorted([int(idx) for idx in self.save['scene_based_lookup'][self.choices['skill_int']].keys()])
+            scene_type_list = ['{}. {}'.format(idx, self.save["sceneType_set"][idx]) for idx in self.scene_type_idxs]
+            self.entries['sceneType'].config(values=pickup_object_list)
+
+        def scene_callback(eventObject):
+            abc = eventObject.widget.get()
+            scene_str = self.entries['sceneType'].get()
+            self.choices['scene_int'] = scene_str.split('. ')[0]
+            if self.choices['scene_int'] == '0':
+                self.scene_type_based = False
+                self.lookup = 
+            else:
+                self.scene_type_based = True
+                self.lookup = self.save['scene_based_lookup']
+
+
+            if scene_str != 'Random Choice':
+                self.choices['scene_int'] = scene_str.split('. ')[0]
+                self.lookup = self.save['scene_based_lookup']
+            else:
+                self.lookup = self.save['lookup']
 
         def pickup_callback(eventObject):
             abc = eventObject.widget.get()
@@ -248,31 +276,28 @@ class DevInterface():
         skill_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
         self.entries['skill'] = skill_ent
         # ---------------------------------------------------------
-        # # option 1 TODO 
-        # scene_typ_row = tk.Frame(self.query_root)
-        # scene_typ_lab = tk.Label(pickup_object_row, text='Choose an object to pickup', anchor='w', font=("Helvetica", self.font_size))
-        # scene_typ_ent = ttk.Combobox(pickup_object_row, width=50, font=("Helvetica", self.box_size))
+        scene_typ_row = tk.Frame(self.query_root)
+        scene_typ_lab = tk.Label(scene_typ_row, text='Explore in this environment', anchor='w', font=("Helvetica", self.font_size))
+        scene_typ_ent = ttk.Combobox(scene_typ_row, width=50, font=("Helvetica", self.box_size))
 
-        # pickup_object_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-        # pickup_object_lab.pack(side=tk.LEFT)
-        # pickup_object_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
-        # self.entries['pickupObject'] = pickup_object_ent
-        # self.entries['pickupObject'].bind('<Button-1>', skill_callback)
-
+        scene_typ_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        scene_typ_lab.pack(side=tk.LEFT)
+        scene_typ_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
+        self.entries['sceneType'] = scene_typ_ent
+        self.entries['sceneType'].bind('<Button-1>', skill_callback)
         # ---------------------------------------------------------
-        # option 2
         pickup_object_row = tk.Frame(self.query_root)
-        pickup_object_lab = tk.Label(pickup_object_row, text='Choose an object to pickup', anchor='w', font=("Helvetica", self.font_size))
+        pickup_object_lab = tk.Label(pickup_object_row, text='Find this item', anchor='w', font=("Helvetica", self.font_size))
         pickup_object_ent = ttk.Combobox(pickup_object_row, width=50, font=("Helvetica", self.box_size))
 
         pickup_object_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
         pickup_object_lab.pack(side=tk.LEFT)
         pickup_object_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
         self.entries['pickupObject'] = pickup_object_ent
-        self.entries['pickupObject'].bind('<Button-1>', skill_callback)
+        self.entries['pickupObject'].bind('<Button-1>', scene_callback)
         # -------------------
         movable_row = tk.Frame(self.query_root)
-        movable_lab = tk.Label(movable_row, text='Choose a container to place the object', anchor='w', font=("Helvetica", self.font_size))
+        movable_lab = tk.Label(movable_row, text='Carry item with this container', anchor='w', font=("Helvetica", self.font_size))
         movable_ent = ttk.Combobox(movable_row, width=50, font=("Helvetica", self.box_size))
 
         movable_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
@@ -282,7 +307,7 @@ class DevInterface():
         self.entries['movable'].bind('<Button-1>', pickup_callback)
         # -------------------
         receptacle_row = tk.Frame(self.query_root)
-        receptacle_lab = tk.Label(receptacle_row, text='Choose a final place for the objects', anchor='w', font=("Helvetica", self.font_size))
+        receptacle_lab = tk.Label(receptacle_row, text='Return item to this receptacle', anchor='w', font=("Helvetica", self.font_size))
         receptacle_ent = ttk.Combobox(receptacle_row, width=50, font=("Helvetica", self.box_size))
 
         receptacle_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
@@ -292,7 +317,7 @@ class DevInterface():
         self.entries['receptacle'].bind('<Button-1>', movable_callback)
         # -------------------
         generate_button_row = tk.Frame(self.query_root)
-        self.generate_button = tk.Button(generate_button_row, text='Generate Instructions', command=generate_traj_callback, font=("Helvetica", self.font_size))
+        self.generate_button = tk.Button(generate_button_row, text='Generate Instructions For Players', command=generate_traj_callback, font=("Helvetica", self.font_size))
         generate_button_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
         self.generate_button.pack(side=tk.LEFT, padx=5, pady=5)
 
@@ -307,7 +332,7 @@ class DevInterface():
         self.task_label.pack(side=tk.LEFT, padx=5, pady=5, fill='both')
         # -------------------
         preview_button_row = tk.Frame(self.query_root)
-        self.preview_button = tk.Button(preview_button_row, text='Preview Game', command=generate_game_preview, font=("Helvetica", self.font_size))
+        self.preview_button = tk.Button(preview_button_row, text='Preview Game Play', command=generate_game_preview, font=("Helvetica", self.font_size))
         preview_button_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
         self.preview_button.pack(side=tk.LEFT, padx=5, pady=5)
 
