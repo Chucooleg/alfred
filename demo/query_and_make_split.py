@@ -38,8 +38,8 @@ class DevInterface():
         'pick_two_obj_and_place': 'Find and place two items',
         'pick_cool_then_place_in_recep': 'Find, cool and place item'
         }
-    box_size = 15
-    font_size = 15
+    box_size = 24
+    font_size = 24
 
     def __init__(self, save, args):
         self.save = save
@@ -153,27 +153,23 @@ class DevInterface():
             self.choices['skill_int'] = skill_str.split('. ')[0]
             if self.choices['skill_int'] == '0':
                 self.choices['skill_int'] = str(random.randint(1, 7))
-            self.scene_type_idxs = sorted([int(idx) for idx in self.save['scene_based_lookup'][self.choices['skill_int']].keys()])
-            scene_type_list = ['{}. {}'.format(idx, self.save["sceneType_set"][idx]) for idx in self.scene_type_idxs]
-            self.entries['sceneType'].config(values=pickup_object_list)
+            self.scene_type_idxs = sorted([int(idx) for idx in self.save['scene_type_based_lookup'][self.choices['skill_int']].keys()] + [0])
+            scene_type_list = ['{}. {}'.format(idx, self.save["scenetype_set"][idx]) for idx in self.scene_type_idxs]
+            self.entries['sceneType'].config(values=scene_type_list)
 
         def scene_callback(eventObject):
             abc = eventObject.widget.get()
             scene_str = self.entries['sceneType'].get()
-            self.choices['scene_int'] = scene_str.split('. ')[0]
-            if self.choices['scene_int'] == '0':
+            self.choices['scene_type_int'] = scene_str.split('. ')[0]
+            if self.choices['scene_type_int'] == '0':
                 self.scene_type_based = False
-                self.lookup = 
+                self.lookup = self.save['lookup'][self.choices['skill_int']]
             else:
                 self.scene_type_based = True
-                self.lookup = self.save['scene_based_lookup']
-
-
-            if scene_str != 'Random Choice':
-                self.choices['scene_int'] = scene_str.split('. ')[0]
-                self.lookup = self.save['scene_based_lookup']
-            else:
-                self.lookup = self.save['lookup']
+                self.lookup = self.save['scene_type_based_lookup'][self.choices['skill_int']][self.choices['scene_type_int']]
+            self.pickup_object_idxs = sorted([int(idx) for idx in self.lookup.keys()] + [0])
+            pickup_object_list = ['{}. {}'.format(idx, self.save["pickupObject_set"][idx]) for idx in self.pickup_object_idxs]
+            self.entries['pickupObject'].config(values=pickup_object_list)
 
         def pickup_callback(eventObject):
             abc = eventObject.widget.get()
@@ -182,7 +178,7 @@ class DevInterface():
             if self.choices['pickupObject_int'] == '0':
                 self.choices['pickupObject_int'] = str(random.choice(self.pickup_object_idxs))
             if self.save['skill_set'][int(self.choices['skill_int'])] == 'pick_and_place_with_movable_recep':
-                self.movable_idxs = sorted([int(idx) for idx in self.save['lookup'][self.choices['skill_int']][self.choices['pickupObject_int']].keys()])
+                self.movable_idxs = sorted([int(idx) for idx in self.lookup[self.choices['pickupObject_int']].keys()] + [0])
                 movable_list = ['{}. {}'.format(idx, self.save["movable_set"][idx]) for idx in self.movable_idxs]
             else:
                 self.movable_idxs = [1]
@@ -195,7 +191,7 @@ class DevInterface():
             self.choices['movable_int'] = movable_str.split('. ')[0]
             if self.choices['movable_int'] == '0':
                 self.choices['movable_int'] = str(random.choice(self.movable_idxs))
-            self.receptacle_idxs = sorted([int(idx) for idx in self.save['lookup'][self.choices['skill_int']][self.choices['pickupObject_int']][self.choices['movable_int']].keys()])
+            self.receptacle_idxs = sorted([int(idx) for idx in self.lookup[self.choices['pickupObject_int']][self.choices['movable_int']].keys()] + [0])
             receptacle_list = ['{}. {}'.format(idx, self.save["receptacle_set"][idx]) for idx in self.receptacle_idxs]
             self.entries['receptacle'].config(values=receptacle_list)
 
@@ -204,7 +200,7 @@ class DevInterface():
             self.choices['receptacle_int'] = receptacle_str.split('. ')[0]
             if self.choices['receptacle_int'] == '0':
                 self.choices['receptacle_int'] = str(random.choice(self.receptacle_idxs))
-            self.scene_idxs = [int(idx) for idx in self.save['lookup'][self.choices['skill_int']][self.choices['pickupObject_int']][self.choices['movable_int']][self.choices['receptacle_int']].keys()]
+            self.scene_idxs = [int(idx) for idx in self.lookup[self.choices['pickupObject_int']][self.choices['movable_int']][self.choices['receptacle_int']].keys()]
             self.choices['scene_int'] = random.choice(self.scene_idxs)
             self.task_def = (
                 self.save['skill_set'][int(self.choices['skill_int'])], 
@@ -213,7 +209,6 @@ class DevInterface():
                 self.save['receptacle_set'][int(self.choices['receptacle_int'])], 
                 self.choices['scene_int'])
             
-            # TODO make instructions
             new_split_path, new_split = make_new_split()
             human_annotation = self.retrieve_human_annotation(new_split_path, new_split)
             baseline_prediction = self.run_baseline_prediction(new_split_path, new_split)
@@ -230,7 +225,7 @@ class DevInterface():
 
         def make_new_split():
             # get trajectory ID
-            splits_and_trajs = self.save['lookup'][str(self.choices['skill_int'])][str(self.choices['pickupObject_int'])][str(self.choices['movable_int'])][str(self.choices['receptacle_int'])][str(self.choices['scene_int'])]
+            splits_and_trajs = self.lookup[str(self.choices['pickupObject_int'])][str(self.choices['movable_int'])][str(self.choices['receptacle_int'])][str(self.choices['scene_int'])]
             split = random.choice(list(splits_and_trajs.keys()))
             self.choices['traj_id'] = random.choice(splits_and_trajs[split])
             # make the new split file
@@ -264,9 +259,8 @@ class DevInterface():
             self.query_root.quit()
             pass
 
-
         # -------------------
-        skills_list = ['{}. {}'.format(skill_i, self.save["skill_set"][skill_i]) for skill_i in sorted(self.save["skill_set"])]
+        skills_list = ['{}. {}'.format(skill_i, self.skill_map[self.save["skill_set"][skill_i]]) for skill_i in sorted(self.save["skill_set"])]
         skill_row = tk.Frame(self.query_root)
         skill_lab = tk.Label(skill_row, text='I want to teach', anchor='w', font=("Helvetica", self.font_size))
         skill_ent = ttk.Combobox(skill_row, width=50, value=skills_list, font=("Helvetica", self.box_size))
@@ -336,6 +330,9 @@ class DevInterface():
         preview_button_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
         self.preview_button.pack(side=tk.LEFT, padx=5, pady=5)
 
+        # -------------------
+        bigfont = font.Font(family="Helvetica",size=self.font_size)
+        self.query_root.option_add("*TCombobox*Listbox*Font", bigfont)
         # -------------------
         self.query_root.mainloop()
 
