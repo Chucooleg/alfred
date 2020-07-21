@@ -9,6 +9,7 @@ from functools import partial
 
 import re
 import pprint
+import textwrap
 
 import sys
 sys.path.append(os.path.join(os.environ['ALFRED_ROOT']))
@@ -38,13 +39,16 @@ class DevInterface():
         'pick_two_obj_and_place': 'Find and place two items',
         'pick_cool_then_place_in_recep': 'Find, cool and place item'
         }
-    box_size = 24
-    font_size = 24
+    box_size = 15
+    font_size = 15
+    pad_size = 8
+    spacing3 = 1
 
     def __init__(self, save, args):
         self.save = save
         self.args = args
         self.choices = {}
+        self.wrapper = textwrap.TextWrapper(width=100)
 
     # (Pdb) new_split_path
     # '/data_alfred/splits/demo_T20200704_141212_436106.json'
@@ -94,13 +98,17 @@ class DevInterface():
 
         return low_level_model, high_level_model
 
-    def retrieve_human_annotation(self, new_split_path, new_split):
+    def retrieve_human_annotation_and_action_traces(self, new_split_path, new_split):
         tar_split = list(new_split.keys())[0]
         raw_traj_path = os.path.join(self.args.data, tar_split, new_split[tar_split][0]['task'], 'traj_data.json')
+
         with open(raw_traj_path, 'r') as f:
-            ann = json.load(f)['turk_annotations']['anns'][0]
-        ann_formatted = ann['task_desc'] + '\n\n' + '\n'.join(ann['high_descs'])       
-        return ann_formatted
+            traj = json.load(f)
+        ann = traj['turk_annotations']['anns'][0]
+        ann_formatted = ann['task_desc'].capitalize() + '\n\n' + '\n'.join([f'{i}. {self.wrapper.fill(instr.capitalize())}' for (i, instr) in enumerate(ann['high_descs'])])
+        
+        actions_formatted = self.wrapper.fill(' '.join([a['discrete_action']['action'] for a in traj['plan']['low_actions']]))
+        return ann_formatted, actions_formatted
 
     def run_baseline_prediction(self, new_split_path, new_split):
         tar_split = list(new_split.keys())[0]
@@ -114,7 +122,7 @@ class DevInterface():
         with open(low_res_file, 'r') as f:
             low_res = json.load(f)[retrieval_traj_id]['p_lang_instr'].split(' . ')
 
-        baseline_prediction = high_res + '\n\n' + ' .\n'.join(low_res)
+        baseline_prediction = high_res.capitalize() + '\n\n' + ' .\n'.join([f'{i}. {self.wrapper.fill(instr.capitalize())}' for (i, instr) in enumerate(low_res)])
         return baseline_prediction
 
     def run_explainer(self, new_split_path, new_split):
@@ -125,20 +133,20 @@ class DevInterface():
         self.args.dout = os.path.join(self.args.dout, f'new_trajectories_T{TIME_STAMP}')
         if not os.path.isdir(self.args.dout):
             print (f'Output directory: {self.args.dout}') 
-            os.makedirs(self.args.dout)      
+            os.makedirs(self.args.dout)
 
         low_level_model, high_level_model = self.load_explainers()
 
         # load train/valid/tests splits
         with open(new_split_path) as f:
             splits = json.load(f)
-            pprint.pprint({k: len(v) for k, v in splits.items()})   
+            pprint.pprint({k: len(v) for k, v in splits.items()})  
 
         # call explainer
         output_instr = explain.main(self.args, splits, low_level_model, high_level_model)
         high_instr = list(output_instr[0].values())[0]['p_lang_instr']
         low_instr = list(list(output_instr[1].values())[0]['p_lang_instr'].values())
-        explainer_prediction = high_instr + '\n\n' + '\n'.join(low_instr)
+        explainer_prediction = high_instr.capitalize() + '\n\n' + '\n'.join([f'{i}. {self.wrapper.fill(instr.capitalize())}' for (i, instr) in enumerate(low_instr)])
 
         return explainer_prediction
 
@@ -210,15 +218,16 @@ class DevInterface():
                 self.choices['scene_int'])
             
             new_split_path, new_split = make_new_split()
-            human_annotation = self.retrieve_human_annotation(new_split_path, new_split)
+            human_annotation, machine_traces = self.retrieve_human_annotation_and_action_traces(new_split_path, new_split)
             baseline_prediction = self.run_baseline_prediction(new_split_path, new_split)
             explainer_prediction = self.run_explainer(new_split_path, new_split)
 
             # update instructions in window 
-            goal_str = '-----------------Goal Directed Instructions-----------------'
-            base_str = '-----------------Baseline Instructions----------------------'
-            human_str = '-----------------Human Annotation---------------------------'
-            self.task_text.set(f"{goal_str}\n{explainer_prediction}\n\n\n{base_str}\n{baseline_prediction}\n\n\n{human_str}\n{human_annotation}\n")
+            goal_str =  '-----------------Nueral Program Goal Directed Instructions-----------------'
+            base_str =  '-----------------Neural Program Baseline Instructions----------------------'
+            human_str = '-----------------Crowd Sourced Human Annotation----------------------------'
+            trace_str = '-----------------Planner Action Traces-------------------------------------'
+            self.task_text.set(f"{goal_str}\n{explainer_prediction}\n\n\n{base_str}\n{baseline_prediction}\n\n\n{human_str}\n{human_annotation}\n\n\n{trace_str}\n{machine_traces}")
 
             # TODO add model, add instructions
             # https://github.com/Chucooleg/alfred/blob/60c89e0c5d0d16e1b8f5b5a562a23dc89d4f7bb5/demo/query_and_make_split.py
@@ -265,7 +274,7 @@ class DevInterface():
         skill_lab = tk.Label(skill_row, text='I want to teach', anchor='w', font=("Helvetica", self.font_size))
         skill_ent = ttk.Combobox(skill_row, width=50, value=skills_list, font=("Helvetica", self.box_size))
 
-        skill_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        skill_row.pack(side=tk.TOP, fill=tk.X, padx=self.pad_size, pady=self.pad_size)
         skill_lab.pack(side=tk.LEFT)
         skill_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
         self.entries['skill'] = skill_ent
@@ -274,7 +283,7 @@ class DevInterface():
         scene_typ_lab = tk.Label(scene_typ_row, text='Explore in this environment', anchor='w', font=("Helvetica", self.font_size))
         scene_typ_ent = ttk.Combobox(scene_typ_row, width=50, font=("Helvetica", self.box_size))
 
-        scene_typ_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        scene_typ_row.pack(side=tk.TOP, fill=tk.X, padx=self.pad_size, pady=self.pad_size)
         scene_typ_lab.pack(side=tk.LEFT)
         scene_typ_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
         self.entries['sceneType'] = scene_typ_ent
@@ -284,7 +293,7 @@ class DevInterface():
         pickup_object_lab = tk.Label(pickup_object_row, text='Find this item', anchor='w', font=("Helvetica", self.font_size))
         pickup_object_ent = ttk.Combobox(pickup_object_row, width=50, font=("Helvetica", self.box_size))
 
-        pickup_object_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        pickup_object_row.pack(side=tk.TOP, fill=tk.X, padx=self.pad_size, pady=self.pad_size)
         pickup_object_lab.pack(side=tk.LEFT)
         pickup_object_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
         self.entries['pickupObject'] = pickup_object_ent
@@ -294,7 +303,7 @@ class DevInterface():
         movable_lab = tk.Label(movable_row, text='Carry item with this container', anchor='w', font=("Helvetica", self.font_size))
         movable_ent = ttk.Combobox(movable_row, width=50, font=("Helvetica", self.box_size))
 
-        movable_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        movable_row.pack(side=tk.TOP, fill=tk.X, padx=self.pad_size, pady=self.pad_size)
         movable_lab.pack(side=tk.LEFT)
         movable_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
         self.entries['movable'] = movable_ent
@@ -304,7 +313,7 @@ class DevInterface():
         receptacle_lab = tk.Label(receptacle_row, text='Return item to this receptacle', anchor='w', font=("Helvetica", self.font_size))
         receptacle_ent = ttk.Combobox(receptacle_row, width=50, font=("Helvetica", self.box_size))
 
-        receptacle_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+        receptacle_row.pack(side=tk.TOP, fill=tk.X, padx=self.pad_size, pady=self.pad_size)
         receptacle_lab.pack(side=tk.LEFT)
         receptacle_ent.pack(side=tk.RIGHT, expand=tk.YES, fill=tk.X)
         self.entries['receptacle'] = receptacle_ent
@@ -312,24 +321,30 @@ class DevInterface():
         # -------------------
         generate_button_row = tk.Frame(self.query_root)
         self.generate_button = tk.Button(generate_button_row, text='Generate Instructions For Players', command=generate_traj_callback, font=("Helvetica", self.font_size))
-        generate_button_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-        self.generate_button.pack(side=tk.LEFT, padx=5, pady=5)
+        generate_button_row.pack(side=tk.TOP, fill=tk.X, padx=self.pad_size, pady=self.pad_size)
+        self.generate_button.pack(side=tk.LEFT, padx=self.pad_size, pady=self.pad_size)
 
         description_row = tk.Frame(self.query_root)
         self.task_text = tk.StringVar()
-        goal_str = '-----------------Goal Directed Instructions-----------------'
-        base_str = '-----------------Baseline Instructions----------------------'
-        human_str = '-----------------Human Annotation---------------------------'
-        self.task_text.set(f"{goal_str}\n\n{base_str}\n\n{human_str}")
+        goal_str =  '-----------------Nueral Program Goal Directed Instructions-----------------'
+        base_str =  '-----------------Neural Program Baseline Instructions----------------------'
+        human_str = '-----------------Crowd Sourced Human Annotation----------------------------'
+        trace_str = '-----------------Planner Action Traces-------------------------------------'
+        self.task_text.set(f"{goal_str}\n\n\n{base_str}\n\n\n{human_str}\n\n\n{trace_str}\n\n\n")
         self.task_label = tk.Label(description_row, textvariable=self.task_text, font=("Helvetica", self.font_size), justify='left')
-        description_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-        self.task_label.pack(side=tk.LEFT, padx=5, pady=5, fill='both')
+        description_row.pack(side=tk.TOP, fill=tk.X, padx=self.pad_size, pady=self.pad_size)
+        self.task_label.pack(side=tk.LEFT, padx=self.pad_size, pady=self.pad_size, fill='both')
         # -------------------
         preview_button_row = tk.Frame(self.query_root)
         self.preview_button = tk.Button(preview_button_row, text='Preview Game Play', command=generate_game_preview, font=("Helvetica", self.font_size))
-        preview_button_row.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-        self.preview_button.pack(side=tk.LEFT, padx=5, pady=5)
-
+        preview_button_row.pack(side=tk.TOP, fill=tk.X, padx=self.pad_size, pady=self.pad_size)
+        self.preview_button.pack(side=tk.LEFT, padx=self.pad_size, pady=self.pad_size)
+        # -------------------
+        # fake button for demo video
+        save_button_row = tk.Frame(self.query_root)
+        self.save_button = tk.Button(save_button_row, text='Save to Game DataBase', command=lambda: None, font=("Helvetica", self.font_size))
+        save_button_row.pack(side=tk.TOP, fill=tk.X, padx=self.pad_size, pady=self.pad_size)
+        self.save_button.pack(side=tk.LEFT, padx=self.pad_size, pady=self.pad_size)
         # -------------------
         bigfont = font.Font(family="Helvetica",size=self.font_size)
         self.query_root.option_add("*TCombobox*Listbox*Font", bigfont)
