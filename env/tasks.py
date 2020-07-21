@@ -463,7 +463,7 @@ def get_task(task_type, traj, env, args, reward_type='sparse', max_episode_lengt
     task_class_str = task_type.replace('_', ' ').title().replace(' ', '') + "Task"
 
     if task_class_str in globals():
-        task = globals()[task_class_str]
-        return task(traj, env, args, reward_type=reward_type, max_episode_length=max_episode_length)
+        task_class = globals()[task_class_str]
+        return task_class(traj, env, args, reward_type=reward_type, max_episode_length=max_episode_length)
     else:
         raise Exception("Invalid task_type %s" % task_class_str)
