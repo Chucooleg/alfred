@@ -107,6 +107,26 @@ class Dataset(object):
         vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
         torch.save(self.vocab, vocab_data_path)
 
+
+    def preprocess_split_augmentation(self, splits, train_vocab=False):
+        '''
+        Preprocess Explainer predicted instructions on training set
+        '''
+        k = 'train'
+        d = splits[k]
+
+        # debugging:
+        if self.args.fast_epoch:
+            d = d[:16]
+
+        for task in progressbar.progressbar(d):
+            # TODO
+
+            
+
+
+
+
     def process_language(self, ex, traj, r_idx, train=True, demo_mode=False):
         # tokenize language
         ann_key = 'explainer_annotations' if demo_mode else 'turk_annotations'
@@ -128,7 +148,7 @@ class Dataset(object):
 
         # end action for low_actions
         end_action = {
-            'api_action': {'action': 'NoOp'},
+            'api_action': {'action': 'NoOp'}, 
             'discrete_action': {'action': '<<stop>>', 'args': {}},
             'high_idx': ex['plan']['high_pddl'][-1]['high_idx']
         }
