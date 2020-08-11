@@ -884,7 +884,7 @@ class LanguageDecoder(nn.Module):
         return self.instance_fc(cat_embeddings)
 
     def forward(self, enc, feat_subgoal, max_decode=50, state_0=None,  valid_object_indices=None,
-                validate_teacher_forcing=False, validate_sample_output=False):
+                validate_teacher_forcing=False, validate_sample_output=False, temperature=1.0):
         '''
         enc :                     (B, T, args.dhid). LSTM encoder per action output
         gold:                     (B, T). padded_sequence of word index tokens.
@@ -951,8 +951,9 @@ class LanguageDecoder(nn.Module):
         state_t = state_0
 
         words = []
+        words_chosen_indices = []
+        probs = []
         attn_scores = []
-
         for t in range(max_t):
 
             word_t, state_t, attn_score_t  = self.step(enc, e_t, state_t)
@@ -962,8 +963,10 @@ class LanguageDecoder(nn.Module):
             # next word choice
             if self.training:
                 if self.train_teacher_forcing:
+                    # 1. teacher forcing
                     w_t = gold[:, t]
                 else:
+                    # 2. teaching forcing but occasionally swap in student
                     use_student = np.random.binomial(1, self.train_student_forcing_prob)
                     if use_student:
                         w_t = word_t.max(1)[1]
@@ -971,20 +974,36 @@ class LanguageDecoder(nn.Module):
                         w_t = gold[:, t]
             else:
                 if validate_teacher_forcing:
+                    # 3. eval with teacher forcing to compare perplexity across models
                     w_t = gold[:, t]
                 else:
                     if validate_sample_output:
-                        w_t = torch.multinomial(torch.exp(word_t), 1).squeeze(-1)
+                        # 4. student forcing, with temperature
+                        # shape (B, 1)
+                        w_t = torch.multinomial(F.softmax(word_t/temperature), 1).squeeze(-1)
                     else:
+                        # 5. student focing, with argmax
                         # argmax
                         w_t = word_t.max(1)[1]
 
-            # next word embedding
+            # prob for chosen word
+            # shape (B,) 
+            prob_t = F.softmax(word_t, dim=1).gather(1, w_t.view(-1, 1)).squeeze(-1)
+
+            # record chosen word index
+            words_chosen_indices.append(w_t)
+            # record prob for word index
+            probs.append(prob_t)
+            # word embedding for next step
             e_t = self.emb(w_t)
  
         results = {
             # shape (B, T , Vocab size)
-            'out_lang_instr': torch.stack(words, dim=1),
+            'out_lang_instr': torch.stack(words, dim=1), 
+            # shape (B, T)
+            'out_lang_instr_idxs': torch.stack(words_chosen_indices, dim=1),
+            # shape (B, T)
+            'out_lang_probs': torch.stack(probs, dim=1),
             'out_attn_scores': torch.stack(attn_scores, dim=1),
             'state_t': state_t,
             'out_obj_vis_score': obj_visibilty_scores,

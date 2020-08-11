@@ -367,7 +367,7 @@ class Module(nn.Module):
 
     @torch.no_grad()
     def run_pred(self, dev, args=None, name='dev', iter=0, 
-                 validate_teacher_forcing=False, validate_sample_output=False):
+                 validate_teacher_forcing=False, validate_sample_output=False, temperature=1.0, write_to_tb=True):
         '''
         validation loop
         '''
@@ -378,26 +378,121 @@ class Module(nn.Module):
         total_loss = list()
         dev_iter = iter
         for batch, feat, iterate_time_report in self.iterate(dev, args.batch):
-            out = self.forward(feat, validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output)
+            out = self.forward(feat, validate_teacher_forcing=validate_teacher_forcing, validate_sample_output=validate_sample_output, temperature=temperature)
             preds = self.extract_preds(out, batch, feat)
             p_dev.update(preds)
             loss, perplexity = self.compute_loss(out, batch, feat)
             for k, v in loss.items():
                 ln = 'batch_loss_' + k
                 m_dev[ln].append(v.item())
-                if validate_teacher_forcing:
+                if validate_teacher_forcing and write_to_tb:
                     self.summary_writer.add_scalar("%s/%s" % (name, ln), v.item(), dev_iter)
             sum_loss = sum(loss.values())
             total_loss.append(float(sum_loss.detach().cpu()))
             m_dev['perplexity'].append(perplexity.item())
-            if validate_teacher_forcing:
+            if validate_teacher_forcing and write_to_tb:
                 self.summary_writer.add_scalar("%s/batch_total_loss" % (name), sum_loss, dev_iter)
                 self.summary_writer.add_scalar("%s/batch_perplexity" % (name), perplexity.item(), dev_iter)
             dev_iter += len(batch)
 
-        m_dev = {k: sum(v) / len(v) for k, v in m_dev.items()}
+        m_dev = {k: float(sum(v) / len(v)) for k, v in m_dev.items()}
         total_loss = sum(total_loss) / len(total_loss)
         return p_dev, dev_iter, total_loss, m_dev
+
+    def run_sampling(self, splits, args=None):
+        '''
+        eval to sample multiple instructions
+        '''
+        args = args or self.args
+
+        # # splits
+        # train_sanity = splits['train_sanity']
+        # # ann_0, ann_1 and ann_2 have the same action sequence, only ann_0 is needed for validation
+        train = splits['train']
+        # valid_seen = [t for t in splits['valid_seen'] if t['repeat_idx'] == 0]
+        # valid_unseen = [t for t in splits['valid_unseen'] if t['repeat_idx'] == 0]    
+
+        # small fraction / fast epoch
+
+        # display dout
+        print("Saving model predictions to: %s" % self.args.dout)
+
+        # try different temperature
+        # very flat, predicted p, in-between, argmax
+        # temperatures = [2.0, 1.5, 1.0, 0.75, 0.5, 0.25]
+        temperatures = [1.5]
+        num_sampling_trials = 10
+        # m_train_sanity, m_valid_seen, m_valid_unseen = {}, {}, {} 
+
+        for temperature in temperatures:
+
+            # -------------------VALID SEEN-------------------
+            # p_valid_seen_all = None
+            # m_valid_seen_all = []
+            # for trial_i in  range(num_sampling_trials):
+                
+            #     # student-forcing, sampled
+            #     p_valid_seen, _, _, m_valid_seen = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0, validate_sample_output=True, temperature=temperature, write_to_tb=False)
+            #     m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
+                
+            #     # add to all sampled results
+            #     p_valid_seen_all = self.make_sampled_debug(preds=p_valid_seen, data=valid_seen, temperature=temperature, debug=p_valid_seen_all) 
+            #     # add to all metrics
+            #     m_valid_seen_all.append(m_valid_seen)
+
+            # fpred = os.path.join(args.dout, 'valid_seen_sampled.temperature_{}.preds.json'.format(temperature))
+            # with open(fpred, 'wt') as f:
+            #     json.dump(p_valid_seen_all, f, indent=2)
+
+            # fmetr = os.path.join(args.dout, 'valid_seen_sampled.temperature_{}.metrics.json'.format(temperature))
+            # with open(fmetr, 'wt') as f:
+            #     json.dump(m_valid_seen_all, f, indent=2) 
+
+            # -------------------VALID UNSEEN-------------------
+            # p_valid_unseen_all = None
+            # m_valid_unseen_all = []
+            # for trial_i in  range(num_sampling_trials):
+                
+            #     # student-forcing, sampled
+            #     p_valid_unseen, _, _, m_valid_unseen = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0, validate_sample_output=True, temperature=temperature, write_to_tb=False)
+            #     m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
+                
+            #     # add to all sampled results
+            #     p_valid_unseen_all = self.make_sampled_debug(preds=p_valid_unseen, data=valid_unseen, temperature=temperature, debug=p_valid_unseen_all) 
+            #     # add to all metrics
+            #     m_valid_unseen_all.append(m_valid_unseen)
+
+            # fpred = os.path.join(args.dout, 'valid_unseen_sampled.temperature_{}.preds.json'.format(temperature))
+            # with open(fpred, 'wt') as f:
+            #     json.dump(p_valid_unseen_all, f, indent=2)
+
+            # fmetr = os.path.join(args.dout, 'valid_unseen_sampled.temperature_{}.metrics.json'.format(temperature))
+            # with open(fmetr, 'wt') as f:
+            #     json.dump(m_valid_unseen_all, f, indent=2) 
+
+            # -------------------TRAIN-------------------
+            p_train_all = None
+            m_train_all = []
+            for trial_i in  range(num_sampling_trials):
+                
+                # student-forcing, sampled
+                p_train, _, _, m_train = self.run_pred(train, args=args, name='train', iter=0, validate_sample_output=True, temperature=temperature, write_to_tb=False)
+                m_train.update(self.compute_metric(p_train, train))
+                
+                # add to all sampled results
+                p_train_all = self.make_sampled_debug(preds=p_train, data=train, temperature=temperature, debug=p_train_all) 
+                # add to all metrics
+                m_train_all.append(m_train)
+
+            fpred = os.path.join(args.dout, 'train_sampled.temperature_{}.preds.json'.format(temperature))
+            with open(fpred, 'wt') as f:
+                json.dump(p_train_all, f, indent=2)
+
+            fmetr = os.path.join(args.dout, 'train_sampled.temperature_{}.metrics.json'.format(temperature))
+            with open(fmetr, 'wt') as f:
+                json.dump(m_train_all, f, indent=2) 
+            # ------------------------------------------------
+
 
     def run_eval(self, splits, args=None, epoch=0):
         '''
@@ -551,6 +646,41 @@ class Module(nn.Module):
         '''
         return "%s_%s" % (ex['task_id'], str(ex['repeat_idx']))
 
+    def make_sampled_debug(self, preds, data, temperature, debug=None):
+        '''
+        Join readable output from different sampling results for debugging.
+        '''
+        if not debug:
+            debug = {}
+            for task in data:
+                ex = self.load_task_json(task)
+                i = self.get_task_and_ann_id(ex)
+                debug[i] = {
+                    # Task Location root
+                    'root': ex['root'],
+                    # Input - Low-level actions
+                    'action_low': [a['discrete_action']['action'] for a in ex['plan']['low_actions']],
+                    # Input - High-level actions
+                    'action_high': [a['discrete_action']['action'] for a in ex['plan']['high_pddl']],
+                    # Predicted - Language
+                    'p_lang_instr': [preds[i]['lang_instr']],
+                    # Predicted - Prob
+                    'p_lang_probs': [preds[i]['lang_probs']],
+                }
+                if self.aux_loss_over_object_states:
+                    for k in [
+                        'obj_token_id', 'p_obj_vis', 'p_state_change',
+                        'l_obj_vis', 'l_state_change'
+                        ]:
+                        # convert numpy arrays to list
+                        debug[i][k] = preds[i][k]                
+        else:
+            for i in preds.keys():
+                debug[i]['p_lang_instr'].append(preds[i]['lang_instr'])
+                debug[i]['p_lang_probs'].append(preds[i]['lang_probs'])
+
+        return debug
+
     def make_debug(self, preds, data):
         '''
         readable output generator for debugging
@@ -568,6 +698,8 @@ class Module(nn.Module):
                 'action_high': [a['discrete_action']['action'] for a in ex['plan']['high_pddl']],
                 # Predicted - Language
                 'p_lang_instr': preds[i]['lang_instr'],
+                # Predicted - Prob
+                'p_lang_probs': preds[i]['lang_probs'],
             }
             if self.aux_loss_over_object_states:
                 for k in [

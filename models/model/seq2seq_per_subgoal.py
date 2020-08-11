@@ -364,8 +364,8 @@ class Module(Base):
     #         if not self.test_mode:
     #             feat['num']['lang_instr'] = [word for desc in feat['num']['lang_instr'] for word in desc]
 
-    def forward_one_subgoal(self, feat_subgoal, max_decode=300, 
-                            validate_teacher_forcing=False, validate_sample_output=False):
+    def forward_one_subgoal(self, feat_subgoal, max_decode=100, 
+                            validate_teacher_forcing=False, validate_sample_output=False, temperature=1.0):
         '''
         feat_subgoal : feature dictionary returned from self.featurize()
         max_decode: integer. Max num words to produce for the subgoal.
@@ -392,11 +392,11 @@ class Module(Base):
             valid_object_indices = feat_subgoal['object_token_id'][:,0,:] if self.aux_loss_over_object_states else None, 
             validate_teacher_forcing=validate_teacher_forcing, 
             validate_sample_output=validate_sample_output,
-            )
+            temperature=temperature)
 
         return res, curr_enc_state, curr_dec_state
 
-    def forward(self, feat, max_decode=300, validate_teacher_forcing=False, validate_sample_output=False):
+    def forward(self, feat, max_decode=100, validate_teacher_forcing=False, validate_sample_output=False, temperature=1.0):
         '''
         feat : feature dictionary returned from self.featurize()
         max_decode: integer. Max num words to produce for the subgoal.
@@ -413,7 +413,8 @@ class Module(Base):
                 feat_subgoal=feat_subgoal,
                 max_decode=max_decode,
                 validate_teacher_forcing=validate_teacher_forcing,
-                validate_sample_output=validate_sample_output)
+                validate_sample_output=validate_sample_output,
+                temperature=temperature)
             for k in res_subgoal.keys():
                 feat[k][subgoal_i] = res_subgoal[k]
 
@@ -480,17 +481,25 @@ class Module(Base):
 
             # Langugage
             # shape (B, t, word vocab size)
-            lang_instr_pred = out['out_lang_instr'][subgoal_i]
-            for ex, lang_instr in zip(batch, lang_instr_pred.max(2)[1].tolist()):
+            # lang_instr_pred = out['out_lang_instr'][subgoal_i]
+            # shape (B, t)
+            lang_instr_pred = out['out_lang_instr_idxs'][subgoal_i]
+            # shape (B, t)
+            lang_instr_probs = out['out_lang_probs'][subgoal_i]
+
+            # for ex, lang_instr in zip(batch, lang_instr_pred.max(2)[1].tolist()):
+            for ex, lang_instr, probs in zip(batch, lang_instr_pred.tolist(), lang_instr_probs.tolist()):
                 # remove padding tokens
                 if self.pad in lang_instr:
                     pad_start_idx = lang_instr.index(self.pad)
                     lang_instr = lang_instr[:pad_start_idx]
+                    probs = probs[:pad_start_idx]
                 
                 if clean_special_tokens:
                     if self.word_stop_token in lang_instr:
                         stop_start_idx = lang_instr.index(self.word_stop_token)
                         lang_instr = lang_instr[:stop_start_idx]
+                        probs = probs[:stop_start_idx]
 
                 # index to word tokens
                 words = self.vocab['word'].index2word(lang_instr)
@@ -498,6 +507,7 @@ class Module(Base):
                 task_id_ann = self.get_task_and_ann_id(ex)
                 # predicted language
                 pred[task_id_ann]['lang_instr'][subgoal_i] = ' '.join(words)
+                pred[task_id_ann]['lang_probs'][subgoal_i] = probs
 
             # Aux Loss
             if self.aux_loss_over_object_states:
@@ -718,6 +728,7 @@ class Module(Base):
         m = collections.defaultdict(list)
 
         flatten_isntr = lambda sent: [word.strip() for word in sent]
+        calc_perplexity = lambda probs: 2**(-1*np.sum(np.log2(probs))/len(probs))
 
         all_pred_id_ann = list(preds.keys())
 
@@ -727,9 +738,12 @@ class Module(Base):
         TYP_TP_VIS_ALL, TYP_TP_STC_ALL, TYP_FP_VIS_ALL, TYP_FP_STC_ALL, TYP_FN_VIS_ALL, TYP_FN_STC_ALL = \
                     [], [], [], [], [], []
 
+        # Book keep predicted words
+        word_counts = {}
+
         for task in data:
             
-            # BLEU
+            # BLEU,  PERPLEXITY against output (not gold)
             # find matching prediction
             pred_id_ann = '{}_{}'.format(task['task'].split('/')[1], task['repeat_idx'])
             # grab task data for ann_0, ann_1 and ann_2
@@ -739,15 +753,25 @@ class Module(Base):
 
             # compute metric for each subgoal
             num_subgoals = len(exs[0]['ann']['instr']) - 1
-            bleu_all_subgoals = []
+
             for subgoal_i in range(num_subgoals):
                 # a list of 3 lists of word tokens. (1 for each human annotation, so total 3)
                 ref_lang_instrs = [flatten_isntr(ex['ann']['instr'][subgoal_i]) for ex in exs]
                 # compute bleu score for subgoal
-                bleu_all_subgoals.append(sentence_bleu(ref_lang_instrs, preds[pred_id_ann]['lang_instr'][subgoal_i].split(' ')))
+                split_pred = preds[pred_id_ann]['lang_instr'][subgoal_i].split(' ')
+                m['BLEU'].append(sentence_bleu(ref_lang_instrs, split_pred))
+                # compute perplexity for subgoal 
+                m['sampling_perplexity'].append(calc_perplexity(preds[pred_id_ann]['lang_probs'][subgoal_i]))
+                # sentence length
+                m['sentence_length'].append(len(split_pred))
+                # lexical distribution
+                for word in split_pred:
+                    if word in word_counts:
+                        word_counts[word] += 1
+                    else:
+                        word_counts[word] = 1
 
-            # average bleu score across all subgoals
-            m['BLEU'].append(sum(bleu_all_subgoals)/num_subgoals)
+            # sentence length, unique lexical types, best, average, worst, std dev perplexity
 
             # AUX LOSS
             if self.aux_loss_over_object_states:
@@ -791,34 +815,48 @@ class Module(Base):
             all_pred_id_ann.remove(pred_id_ann)
 
         assert len(all_pred_id_ann) == 0
-        m_out = {k: sum(v)/len(v) for k, v in m.items()}
+        
+        m_out = {}
+        for k, v in m.items():
+            if 'ACC' in k:
+                m_out[k] = sum(v)/len(v)
+            else:
+                m_out['{}_max'.format(k)] = max(v)
+                m_out['{}_min'.format(k)] = min(v)
+                m_out['{}_mean'.format(k)] = np.nanmean(v)
+                m_out['{}_median'.format(k)] = np.nanmedian(v)
+                m_out['{}_stdev'.format(k)] = np.std(v)
+                if 'sampling_perplexity' in k:
+                    m_out[k] = v
+
+        m_out['word_counts'] = word_counts
 
         if self.aux_loss_over_object_states:
-            m_out['PRECISION_VIS'] = sum(TP_VIS_ALL) / (sum(TP_VIS_ALL) + sum(FP_VIS_ALL))
-            m_out['RECALL_VIS'] = sum(TP_VIS_ALL) / (sum(TP_VIS_ALL) + sum(FN_VIS_ALL))
-            m_out['PRECISION_STC'] = sum(TP_STC_ALL) / (sum(TP_STC_ALL) + sum(FP_STC_ALL))
-            m_out['RECALL_STC'] = sum(TP_STC_ALL) / (sum(TP_STC_ALL) + sum(FN_STC_ALL))
+            m_out['PRECISION_VIS'] = float(sum(TP_VIS_ALL) / (sum(TP_VIS_ALL) + sum(FP_VIS_ALL)))
+            m_out['RECALL_VIS'] = float(sum(TP_VIS_ALL) / (sum(TP_VIS_ALL) + sum(FN_VIS_ALL)))
+            m_out['PRECISION_STC'] = float(sum(TP_STC_ALL) / (sum(TP_STC_ALL) + sum(FP_STC_ALL)))
+            m_out['RECALL_STC'] = float(sum(TP_STC_ALL) / (sum(TP_STC_ALL) + sum(FN_STC_ALL)))
 
-            m_out['TOTAL_GT_STC'] = sum(TP_STC_ALL) + sum(FN_STC_ALL)
-            m_out['TOTAL_PRED_STC'] = sum(TP_STC_ALL) + sum(FP_STC_ALL)
-            m_out['TOTAL_GT_VIS'] = sum(TP_VIS_ALL) + sum(FN_VIS_ALL)
-            m_out['TOTAL_PRED_VIS'] = sum(TP_VIS_ALL) + sum(FP_VIS_ALL)
+            m_out['TOTAL_GT_STC'] = float(sum(TP_STC_ALL) + sum(FN_STC_ALL))
+            m_out['TOTAL_PRED_STC'] = float(sum(TP_STC_ALL) + sum(FP_STC_ALL))
+            m_out['TOTAL_GT_VIS'] = float(sum(TP_VIS_ALL) + sum(FN_VIS_ALL))
+            m_out['TOTAL_PRED_VIS'] = float(sum(TP_VIS_ALL) + sum(FP_VIS_ALL))
             
             m_out['TOTAL_COUNT_VIS'] = len(TP_VIS_ALL)
             m_out['TOTAL_COUNT_STC'] = len(TP_STC_ALL)
 
             if self.object_repr == 'instance':
                 # report type as well      
-                m_out['TYPE_PRECISION_VIS'] = sum(TYP_TP_VIS_ALL) / (sum(TYP_TP_VIS_ALL) + sum(TYP_FP_VIS_ALL))
-                m_out['TYPE_RECALL_VIS'] = sum(TYP_TP_VIS_ALL) / (sum(TYP_TP_VIS_ALL) + sum(TYP_FN_VIS_ALL))
-                m_out['TYPE_PRECISION_STC'] = sum(TYP_TP_STC_ALL) / (sum(TYP_TP_STC_ALL) + sum(TYP_FP_STC_ALL))
-                m_out['TYPE_RECALL_STC'] = sum(TYP_TP_STC_ALL) / (sum(TYP_TP_STC_ALL) + sum(TYP_FN_STC_ALL))
+                m_out['TYPE_PRECISION_VIS'] = float(sum(TYP_TP_VIS_ALL) / (sum(TYP_TP_VIS_ALL) + sum(TYP_FP_VIS_ALL)))
+                m_out['TYPE_RECALL_VIS'] = float(sum(TYP_TP_VIS_ALL) / (sum(TYP_TP_VIS_ALL) + sum(TYP_FN_VIS_ALL)))
+                m_out['TYPE_PRECISION_STC'] = float(sum(TYP_TP_STC_ALL) / (sum(TYP_TP_STC_ALL) + sum(TYP_FP_STC_ALL)))
+                m_out['TYPE_RECALL_STC'] = float(sum(TYP_TP_STC_ALL) / (sum(TYP_TP_STC_ALL) + sum(TYP_FN_STC_ALL)))
 
-                m_out['TYPE_TOTAL_GT_STC'] = sum(TYP_TP_STC_ALL) + sum(TYP_FN_STC_ALL)
-                m_out['TYPE_TOTAL_PRED_STC'] = sum(TYP_TP_STC_ALL) + sum(TYP_FP_STC_ALL)
-                m_out['TYPE_TOTAL_GT_VIS'] = sum(TYP_TP_VIS_ALL) + sum(TYP_FN_VIS_ALL)
-                m_out['TYPE_TOTAL_PRED_VIS'] = sum(TYP_TP_VIS_ALL) + sum(TYP_FP_VIS_ALL)
-                
+                m_out['TYPE_TOTAL_GT_STC'] = float(sum(TYP_TP_STC_ALL) + sum(TYP_FN_STC_ALL))
+                m_out['TYPE_TOTAL_PRED_STC'] = float(sum(TYP_TP_STC_ALL) + sum(TYP_FP_STC_ALL))
+                m_out['TYPE_TOTAL_GT_VIS'] = float(sum(TYP_TP_VIS_ALL) + sum(TYP_FN_VIS_ALL))
+                m_out['TYPE_TOTAL_PRED_VIS'] = float(sum(TYP_TP_VIS_ALL) + sum(TYP_FP_VIS_ALL))
+
                 m_out['TYPE_TOTAL_COUNT_VIS'] = len(TYP_TP_VIS_ALL)
                 m_out['TYPE_TOTAL_COUNT_STC'] = len(TYP_TP_STC_ALL)  
             
