@@ -54,7 +54,8 @@ class Module(nn.Module):
         log metrics such as BLEU and accuracy to tensorboard
         '''
         for k in metrics.keys():
-            self.summary_writer.add_scalar('{}/{}_{}_{}'.format(split_name, prefix, k, suffix), metrics[k], ix)
+            if k not in ['word_counts', 'sampling_perplexity']:
+                self.summary_writer.add_scalar('{}/{}_{}_{}'.format(split_name, prefix, k, suffix), metrics[k], ix)
 
     def run_train(self, splits, args=None, optimizer=None, start_epoch=0, end_epoch=50 ,start_iters=None):
         '''
@@ -217,7 +218,7 @@ class Module(nn.Module):
             m_train_sanity['total_loss'], m_valid_seen['total_loss'], m_valid_unseen['total_loss'] = \
                 m_train_sanity_teacher['total_loss'], m_valid_seen_teacher['total_loss'], m_valid_unseen_teacher['total_loss']
             m_train_sanity['BLEU'], m_valid_seen['BLEU'], m_valid_unseen['BLEU'] = \
-                m_train_sanity_student['BLEU'], m_valid_seen_student['BLEU'], m_valid_unseen_student['BLEU']
+                m_train_sanity_student['BLEU_mean'], m_valid_seen_student['BLEU_mean'], m_valid_unseen_student['BLEU_mean']
 
             stats = {'epoch': epoch, 'train_sanity': m_train_sanity, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
             #-------------------------------------------------------
@@ -408,9 +409,9 @@ class Module(nn.Module):
         # # splits
         # train_sanity = splits['train_sanity']
         # # ann_0, ann_1 and ann_2 have the same action sequence, only ann_0 is needed for validation
-        train = splits['train']
-        # valid_seen = [t for t in splits['valid_seen'] if t['repeat_idx'] == 0]
-        # valid_unseen = [t for t in splits['valid_unseen'] if t['repeat_idx'] == 0]    
+        train = [t for t in splits['train'] if t['repeat_idx'] == 0]
+        valid_seen = [t for t in splits['valid_seen'] if t['repeat_idx'] == 0]
+        valid_unseen = [t for t in splits['valid_unseen'] if t['repeat_idx'] == 0]    
 
         # small fraction / fast epoch
 
@@ -420,55 +421,55 @@ class Module(nn.Module):
         # try different temperature
         # very flat, predicted p, in-between, argmax
         # temperatures = [2.0, 1.5, 1.0, 0.75, 0.5, 0.25]
-        temperatures = [1.5]
+        temperatures = [0.75]
         num_sampling_trials = 10
         # m_train_sanity, m_valid_seen, m_valid_unseen = {}, {}, {} 
 
         for temperature in temperatures:
 
             # -------------------VALID SEEN-------------------
-            # p_valid_seen_all = None
-            # m_valid_seen_all = []
-            # for trial_i in  range(num_sampling_trials):
+            p_valid_seen_all = None
+            m_valid_seen_all = []
+            for trial_i in  range(num_sampling_trials):
                 
-            #     # student-forcing, sampled
-            #     p_valid_seen, _, _, m_valid_seen = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0, validate_sample_output=True, temperature=temperature, write_to_tb=False)
-            #     m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
+                # student-forcing, sampled
+                p_valid_seen, _, _, m_valid_seen = self.run_pred(valid_seen, args=args, name='valid_seen', iter=0, validate_sample_output=True, temperature=temperature, write_to_tb=False)
+                m_valid_seen.update(self.compute_metric(p_valid_seen, valid_seen))
                 
-            #     # add to all sampled results
-            #     p_valid_seen_all = self.make_sampled_debug(preds=p_valid_seen, data=valid_seen, temperature=temperature, debug=p_valid_seen_all) 
-            #     # add to all metrics
-            #     m_valid_seen_all.append(m_valid_seen)
+                # add to all sampled results
+                p_valid_seen_all = self.make_sampled_debug(preds=p_valid_seen, data=valid_seen, temperature=temperature, debug=p_valid_seen_all) 
+                # add to all metrics
+                m_valid_seen_all.append(m_valid_seen)
 
-            # fpred = os.path.join(args.dout, 'valid_seen_sampled.temperature_{}.preds.json'.format(temperature))
-            # with open(fpred, 'wt') as f:
-            #     json.dump(p_valid_seen_all, f, indent=2)
+            fpred = os.path.join(args.dout, 'valid_seen_sampled.temperature_{}.preds.json'.format(temperature))
+            with open(fpred, 'wt') as f:
+                json.dump(p_valid_seen_all, f, indent=2)
 
-            # fmetr = os.path.join(args.dout, 'valid_seen_sampled.temperature_{}.metrics.json'.format(temperature))
-            # with open(fmetr, 'wt') as f:
-            #     json.dump(m_valid_seen_all, f, indent=2) 
+            fmetr = os.path.join(args.dout, 'valid_seen_sampled.temperature_{}.metrics.json'.format(temperature))
+            with open(fmetr, 'wt') as f:
+                json.dump(m_valid_seen_all, f, indent=2) 
 
             # -------------------VALID UNSEEN-------------------
-            # p_valid_unseen_all = None
-            # m_valid_unseen_all = []
-            # for trial_i in  range(num_sampling_trials):
+            p_valid_unseen_all = None
+            m_valid_unseen_all = []
+            for trial_i in  range(num_sampling_trials):
                 
-            #     # student-forcing, sampled
-            #     p_valid_unseen, _, _, m_valid_unseen = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0, validate_sample_output=True, temperature=temperature, write_to_tb=False)
-            #     m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
+                # student-forcing, sampled
+                p_valid_unseen, _, _, m_valid_unseen = self.run_pred(valid_unseen, args=args, name='valid_unseen', iter=0, validate_sample_output=True, temperature=temperature, write_to_tb=False)
+                m_valid_unseen.update(self.compute_metric(p_valid_unseen, valid_unseen))
                 
-            #     # add to all sampled results
-            #     p_valid_unseen_all = self.make_sampled_debug(preds=p_valid_unseen, data=valid_unseen, temperature=temperature, debug=p_valid_unseen_all) 
-            #     # add to all metrics
-            #     m_valid_unseen_all.append(m_valid_unseen)
+                # add to all sampled results
+                p_valid_unseen_all = self.make_sampled_debug(preds=p_valid_unseen, data=valid_unseen, temperature=temperature, debug=p_valid_unseen_all) 
+                # add to all metrics
+                m_valid_unseen_all.append(m_valid_unseen)
 
-            # fpred = os.path.join(args.dout, 'valid_unseen_sampled.temperature_{}.preds.json'.format(temperature))
-            # with open(fpred, 'wt') as f:
-            #     json.dump(p_valid_unseen_all, f, indent=2)
+            fpred = os.path.join(args.dout, 'valid_unseen_sampled.temperature_{}.preds.json'.format(temperature))
+            with open(fpred, 'wt') as f:
+                json.dump(p_valid_unseen_all, f, indent=2)
 
-            # fmetr = os.path.join(args.dout, 'valid_unseen_sampled.temperature_{}.metrics.json'.format(temperature))
-            # with open(fmetr, 'wt') as f:
-            #     json.dump(m_valid_unseen_all, f, indent=2) 
+            fmetr = os.path.join(args.dout, 'valid_unseen_sampled.temperature_{}.metrics.json'.format(temperature))
+            with open(fmetr, 'wt') as f:
+                json.dump(m_valid_unseen_all, f, indent=2) 
 
             # -------------------TRAIN-------------------
             p_train_all = None
@@ -587,9 +588,9 @@ class Module(nn.Module):
         m_train_sanity['total_loss'], m_valid_seen['total_loss'], m_valid_unseen['total_loss'] = \
             m_train_sanity_teacher['total_loss'], m_valid_seen_teacher['total_loss'], m_valid_unseen_teacher['total_loss']
         m_train_sanity['BLEU_argmax'], m_valid_seen['BLEU_argmax'], m_valid_unseen['BLEU_argmax'] = \
-            m_train_sanity_student_argmax['BLEU'], m_valid_seen_student_argmax['BLEU'], m_valid_unseen_student_argmax['BLEU']
+            m_train_sanity_student_argmax['BLEU_mean'], m_valid_seen_student_argmax['BLEU_mean'], m_valid_unseen_student_argmax['BLEU_mean']
         m_train_sanity['BLEU_sampled'], m_valid_seen['BLEU_sampled'], m_valid_unseen['BLEU_sampled'] = \
-            m_train_sanity_student_sampled['BLEU'], m_valid_seen_student_sampled['BLEU'], m_valid_unseen_student_sampled['BLEU']
+            m_train_sanity_student_sampled['BLEU_mean'], m_valid_seen_student_sampled['BLEU_mean'], m_valid_unseen_student_sampled['BLEU_mean']
 
         stats = {'epoch': epoch, 'train_sanity': m_train_sanity, 'valid_seen': m_valid_seen, 'valid_unseen': m_valid_unseen}
         #-------------------------------------------------------

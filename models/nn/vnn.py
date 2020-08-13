@@ -221,7 +221,7 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
         # object handling
         # (V, dhid)
         self.obj_emb = obj_emb
-        self.obj_demb = self.obj_emb.weight.size(1)
+        # self.obj_demb = self.obj_emb.weight.size(1)
         self.object_repr = object_repr # 'type' or 'instance
 
         if self.object_repr == 'instance':
@@ -903,6 +903,7 @@ class LanguageDecoder(nn.Module):
         # Simple Aux Loss prediction using dot products
         obj_visibilty_scores, obj_state_change_scores = None, None
         if self.aux_loss_over_object_states:
+            # raise Exception
 
             # Max pool hidden state 
             # (B, args.dhid)

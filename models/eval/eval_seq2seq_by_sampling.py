@@ -93,9 +93,7 @@ if __name__ == '__main__':
     # load checkpt and run eval
     print('resume path: {}'.format(args.resume))
     model, _, _, _ = M.Module.load(args.resume, {
-            'gpu':args.gpu, 'data':args.data, 'dout':args.dout, 'sampling':args.sampling, 'predict_high_level_goal':False,
-            'encoder_addons':'none', 'decoder_addons':'none', 'object_repr':'type'
-            })
+            'gpu':args.gpu, 'data':args.data, 'dout':args.dout, 'sampling':args.sampling, 'predict_high_level_goal':False})
     model.demo_mode = False
 
     # to gpu

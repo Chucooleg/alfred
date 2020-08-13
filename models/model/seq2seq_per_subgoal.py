@@ -37,8 +37,10 @@ class Module(Base):
 
         # action sequence decoder
         if self.encoder_addons == 'max_pool_obj':
+            # raise Exception
             encoder = vnn.ActionFrameAttnEncoderPerSubgoalMaxPool
         elif self.encoder_addons == 'biattn_obj':
+            # raise Exception
             encoder = vnn.ActionFrameAttnEncoderPerSubgoalObjAttn
         else: # 'none'
             encoder = vnn.ActionFrameAttnEncoderPerSubgoal
@@ -511,6 +513,8 @@ class Module(Base):
 
             # Aux Loss
             if self.aux_loss_over_object_states:
+                # raise Exception
+
                 # (B, max_num_objects of batch)
                 obj_vis_pred = out['out_obj_vis_score'][subgoal_i]
                 obj_state_change_pred = out['out_state_change_score'][subgoal_i]

@@ -22,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('--splits', help='json file containing train/dev/test splits', default='data/splits/may17.json')
     parser.add_argument('--preprocess', help='store preprocessed data to json files', action='store_true')
     parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
-    parser.add_argument('--object_vocab', help='object_vocab version', help='should be file with .object_vocab ending')
+    parser.add_argument('--object_vocab', help='object_vocab version, should be file with .object_vocab ending. default is none', default='none')
     parser.add_argument('--save_every_epoch', help='save model after every epoch (warning: consumes a lot of space)', action='store_true')
     parser.add_argument('--model', help='model to use', default='seq2seq_nl_baseline')
     parser.add_argument('--gpu', help='use gpu', action='store_true')
@@ -46,7 +46,7 @@ if __name__ == '__main__':
     # architecture ablations
     parser.add_argument('--encoder_addons', type=str, default='none', choices=['none', 'max_pool_obj', 'biattn_obj'])
     parser.add_argument('--decoder_addons', type=str, default='none', choices=['none', 'aux_loss'])
-    parser.add_argument('--object_repr', type=str, default='type', choices=['type', 'instance'])
+    parser.add_argument('--object_repr', type=str, default='type', choices=['none', 'type', 'instance'])
     parser.add_argument('--reweight_aux_bce', help='reweight binary CE for auxiliary tasks', action='store_true')
 
     # target
@@ -101,8 +101,11 @@ if __name__ == '__main__':
     else:
         vocab = torch.load(os.path.join(args.data, "%s.vocab" % args.pp_folder))
 
-    # TODO hacky -- incorporate into preprocessing
-    object_vocab = torch.load(os.path.join(args.data, '%s' % args.object_vocab)) # should be file with .object_vocab ending.
+    # load object vocab
+    if args.object_vocab != 'none':
+        object_vocab = torch.load(os.path.join(args.data, '%s' % args.object_vocab)) 
+    else:
+        object_vocab = None
 
     # load model
     M = import_module('model.{}'.format(args.model))
@@ -125,6 +128,7 @@ if __name__ == '__main__':
     # to gpu
     if args.gpu:
         model = model.to(torch.device('cuda'))
+        model.demo_mode = False
         if not optimizer is None:
             optimizer_to(optimizer, torch.device('cuda'))
 

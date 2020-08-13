@@ -81,7 +81,7 @@ class Dataset(object):
 
                 # numericalize actions for train/valid splits
                 if 'test' not in k: # expert actions are not available for the test set
-                    self.process_actions(ex, traj, train=train_vocab, language_processed=preprocess_lang)
+                    self.process_actions(ex, traj, train=train_vocab, language_already_processed=preprocess_lang)
 
                 # check if preprocessing storage folder exists
                 preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
@@ -107,42 +107,124 @@ class Dataset(object):
         vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
         torch.save(self.vocab, vocab_data_path)
 
-
-    def preprocess_split_augmentation(self, splits, train_vocab=False):
+    def preprocess_splits_augmentation(self, splits, filename, timestamp):
         '''
         Preprocess Explainer predicted instructions on training set
+        filename: str. e.g. 'explained_instructions_temperature_0.75_T20200810_1829.json', 'baseline_instructions_temperature_0.75_T20200810_1829.json'
+        timestamp: str: '20200810_1829'
         '''
-        k = 'train'
-        d = splits[k]
+        out_prefix = 'aug'
+        if 'explain' in filename:
+            out_prefix += '_explainer'
+        elif 'baseline' in filename:
+            out_prefix += '_baseline'
 
-        # debugging:
-        if self.args.fast_epoch:
-            d = d[:16]
+        # for k in ['train', 'valid_seen', 'valid_unseen']:
+        for k in ['train']: 
+            d = splits[k]
 
-        for task in progressbar.progressbar(d):
-            # TODO
+            # debugging:
+            if self.args.fast_epoch:
+                d = d[:16]
 
-            
+            for task in progressbar.progressbar(d):
+                
+                if task['repeat_idx'] == 0:
+
+                    # make output preprocessed folder
+                    preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
+                    if not os.path.isdir(preprocessed_folder):
+                        os.makedirs(preprocessed_folder)    
+
+                    # load traj file
+                    if os.path.exists(os.path.join(preprocessed_folder, "ann_0.json")):
+                        # load ann_0.json, skip some preprocessing
+                        json_path = os.path.join(preprocessed_folder, "ann_0.json")
+                        use_raw_traj = False
+                    else:
+                        # load raw traj file.
+                        json_path = os.path.join(self.args.data, k, task['task'], 'traj_data.json')
+                        use_raw_traj = True
+                    with open(json_path) as f:
+                        ex = json.load(f)
+                    traj = ex.copy()
+
+                    # load sampled instructions
+                    sampled_instr_json_path = os.path.join(self.args.data, k, task['task'], filename) 
+                    with open(sampled_instr_json_path, 'r') as f:
+                        sampled_instrs = json.load(f)
+
+                    # root & split
+                    traj['root'] = os.path.join(self.args.data, task['task'])
+                    traj['split'] = k
+                    
+                    # numericalize actions for train/valid splits
+                    if 'test' not in k:
+                        self.process_actions(ex, traj, train=False, language_already_processed=False)
+
+                    # loop through 
+                    for r_idx, instrs in enumerate(sampled_instrs):
+                        traj['repeat_idx'] = r_idx
+
+                        self.process_augmented_language(instrs['high_descs'], traj, r_idx)
+
+                        aligment_check = self.check_lang_action_segment_alignments(traj, apply_fix=use_raw_traj)
+
+                        preprocessed_json_path = os.path.join(preprocessed_folder, f"{out_prefix}_{r_idx}_T{timestamp}.json")
+                        with open(preprocessed_json_path, 'w') as f:
+                            json.dump(traj, f, sort_keys=True, indent=4)
 
 
+    def process_augmented_language(self, instrs, traj, r_idx):
+        '''
+        instrs: list of strings each a sentence corresponding to a subgoal. ['turn around and walk to kitchen', 'pick up the knife',...]
+        r_idx: int. usually 0-5. For each groundtruth trace there are multiple lang instructions for it, r_idx index them.
+        instr_type_key: str. 'explained', 'baseline' etc. similar to 'ann'
+        preprocess_goal: boolean. True will preprocess goal from 'turk_annotation'. False will reuse goal from 'ann'
+        '''
+        # reuse goal from  turk annotations
+        goal = traj['turk_annotations']['anns'][r_idx%3]['task_desc']
+        # tokenize and numerical language, save numericalized to traj
+        tokenized_goal, tokenized_instrs = self.numeralize_instr(traj, goal, instrs, train=False)
 
+        # save tokenize to traj       
+        traj['aug'] = {
+            'goal': tokenized_goal,
+            'instr': tokenized_instrs,
+            'repeat_idx': r_idx
+        } 
 
     def process_language(self, ex, traj, r_idx, train=True, demo_mode=False):
-        # tokenize language
+
+        # tokenize and numerical language, save numericalized to traj
         ann_key = 'explainer_annotations' if demo_mode else 'turk_annotations'
+        tokenized_goal, tokenized_instrs = self.numeralize_instr(
+            traj=traj,
+            goal=ex[ann_key]['anns'][r_idx]['task_desc'], 
+            instrs=ex[ann_key]['anns'][r_idx]['high_descs'],
+            train=train)
+
+        # save tokenize to traj
         traj['ann'] = {
-            'goal': revtok.tokenize(remove_spaces_and_lower(ex[ann_key]['anns'][r_idx]['task_desc'])) + ['<<goal>>'],
-            'instr': [revtok.tokenize(remove_spaces_and_lower(x)) for x in ex[ann_key]['anns'][r_idx]['high_descs']] + [['<<stop>>']],
+            'goal': tokenized_goal,
+            'instr': tokenized_instrs,
             'repeat_idx': r_idx
-        }
+        }        
+
+    def numeralize_instr(self, traj, goal, instrs, train=True):
+
+        tokenized_goal = revtok.tokenize(remove_spaces_and_lower(goal)) + ['<<goal>>']
+        tokenized_instrs = [revtok.tokenize(remove_spaces_and_lower(x)) for x in instrs] + [['<<stop>>']]
 
         # numericalize language
-        traj['num'] = {}
-        traj['num']['lang_goal'] = self.numericalize(self.vocab['word'], traj['ann']['goal'], train=train)
-        traj['num']['lang_instr'] = [self.numericalize(self.vocab['word'], x, train=train) for x in traj['ann']['instr']]
+        if 'num' not in traj.keys():
+            traj['num'] = {}
+        traj['num']['lang_goal'] = self.numericalize(self.vocab['word'], tokenized_goal, train=train)
+        traj['num']['lang_instr'] = [self.numericalize(self.vocab['word'], x, train=train) for x in tokenized_instrs]        
 
+        return tokenized_goal, tokenized_instrs
 
-    def process_actions(self, ex, traj, train=True, language_processed=True):
+    def process_actions(self, ex, traj, train=True, language_already_processed=True):
         # deal with missing end high-level action
         self.fix_missing_high_pddl_end_action(ex)
 
@@ -155,7 +237,7 @@ class Dataset(object):
 
         # init action_low and action_high
         num_hl_actions = len(ex['plan']['high_pddl'])
-        if 'num' not in traj.keys(): # if we skip process_language()
+        if 'num' not in traj.keys():
             traj['num'] = {}
         traj['num']['action_low'] = [list() for _ in range(num_hl_actions)]  # temporally aligned with HL actions
         traj['num']['action_high'] = []
@@ -205,15 +287,27 @@ class Dataset(object):
                 'action_high_args': self.numericalize(self.vocab['action_high'], a['discrete_action']['args'], train=train, action_high=True),
             })
 
-        # check alignment between step-by-step language and action sequence segments
-        action_low_seg_len = len(traj['num']['action_low'])
-        if language_processed:
-            lang_instr_seg_len = len(traj['num']['lang_instr'])
-            seg_len_diff = action_low_seg_len - lang_instr_seg_len
-            if seg_len_diff != 0:
-                assert (seg_len_diff == 1) # sometimes the alignment is off by one  ¯\_(ツ)_/¯
-                self.merge_last_two_low_actions(traj)
+        # fix if language and action segments are not aligned
+        if language_already_processed:
+            self.check_lang_action_segment_alignments(traj, apply_fix=True)
 
+    def check_lang_action_segment_alignments(self, traj, apply_fix=True):
+        '''
+        check alignment between step-by-step language and action sequence segments
+        '''
+        action_low_seg_len = len(traj['num']['action_low'])
+        lang_instr_seg_len = len(traj['num']['lang_instr'])
+        seg_len_diff = action_low_seg_len - lang_instr_seg_len
+        if seg_len_diff != 0:
+            try:
+                assert (seg_len_diff == 1) # sometimes the alignment is off by one  ¯\_(ツ)_/¯
+            except:
+                import pdb; pdb.set_trace()
+            if apply_fix:
+                self.merge_last_two_low_actions(traj)
+            return False
+        else:
+            return True
 
     def fix_missing_high_pddl_end_action(self, ex):
         '''
