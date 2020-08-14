@@ -78,6 +78,10 @@ def dump_data_dict():
         json.dump(constants.data_dict, fp, sort_keys=True, indent=4)
 
 def delete_save(in_parallel):
+    '''
+    Delete all collected images in save directory.
+    in_parallel: boolean. If using multiple threads and another thread is attempting this task, don't delete.
+    '''
     save_folder = constants.save_path.replace(RAW_IMAGES_FOLDER, '')
     if os.path.exists(save_folder):
         try:
@@ -227,7 +231,7 @@ def count_successes_from_disk(task_tuple):
 
 def sample_task_trajs(
     args, task_tuple, agent, env, obj_to_scene_ids, 
-    scene_id_to_objs, pickup_candidates, add_requirements=None):
+    scene_id_to_objs, pickup_candidates, add_requirements={}):
     '''
     Sample trajectory according to task tuple, save to disk location.
 
@@ -394,13 +398,23 @@ def sample_task_trajs(
 
             sampled_traj_dirs['fails'][seed] = task_root
 
-            deleted = delete_save(args.in_parallel)
-            if not deleted:  # another thread is filling this task successfully, so leave it alone.
-                target_remaining = 0  # stop trying to do this task.
-            else:
-                if str(e) == "API Action Failed: No valid positions to place object found":
-                    # Try increasing the space available on sparse and empty flagged objects.
-                    num_place_fails += 1 
+            # deleted = delete_save(args.in_parallel)
+
+            # save the failed trajectory anyway!
+            # dump constants.data_dict to file
+            dump_data_dict()
+            # save images in images_path to video_path
+            # save_video()5         
+
+            if str(e) == "API Action Failed: No valid positions to place object found":
+                num_place_fails += 1 
+
+            # if not deleted:  # another thread is filling this task successfully, so leave it alone.
+            #     target_remaining = 0  # stop trying to do this task.
+            # else:
+            #     if str(e) == "API Action Failed: No valid positions to place object found":
+            #         # Try increasing the space available on sparse and empty flagged objects.
+            #         num_place_fails += 1 
 
             estr = str(e)
             if len(estr) > 120:
@@ -428,6 +442,7 @@ def sample_task_trajs(
     print("---------------End of Sampling----------------")
     print((gtype, pickup_obj, movable_obj, receptacle_obj, str(scene_num)))
     print('Finished a maximum of {} trials, with {} fails.'.format(args.trials_before_fail, sum([errors[er] for er in errors])))
+
     # if this combination resulted in a certain number of failures with no successes, flag it as not possible.
     if tries_remaining == 0 and target_remaining == args.repeats_per_cond:
          print('The specified tuple is too hard to sample any successful trajectories.')
@@ -435,51 +450,53 @@ def sample_task_trajs(
     return sampled_traj_dirs, errors
 
 
-def sample_task_params(args):
+# def sample_task_params(args):
 
-    # ('pick_two_obj_and_place', 'Watch', 'None', 'Dresser', 205)
+#     # ('pick_two_obj_and_place', 'Watch', 'None', 'Dresser', 205)
 
-    add_requirements = {}
+#     add_requirements = {}
     
-    # parse args
-    if args.goal == 'random1':
-        gtype = 'pick_two_obj_and_place'
-    else:
-        gtype = args.goal
+#     # parse args
+#     if args.goal == 'random1':
+#         gtype = 'pick_two_obj_and_place'
+#     else:
+#         gtype = args.goal
     
-    if args.pickup == 'random1':
-        pickup_obj = 'Watch'
-    else:
-        pickup_obj = args.pickup
+#     if args.pickup == 'random1':
+#         pickup_obj = 'Watch'
+#     else:
+#         pickup_obj = args.pickup
 
-    if args.movable == 'random1':
-        movable_obj = 'None'
-    else:
-        movable_obj = args.movable
+#     if args.movable == 'random1':
+#         movable_obj = 'None'
+#     else:
+#         movable_obj = args.movable
 
-    if args.receptacle == 'random1':
-        receptacle_obj = 'Dresser'
-    else:
-        receptacle_obj = args.receptacle
+#     if args.receptacle == 'random1':
+#         receptacle_obj = 'Dresser'
+#     else:
+#         receptacle_obj = args.receptacle
 
-    if args.scene == 'random1':
-        scene_num = 205
-    else:
-        # scene_num = int(args.scene)
-        scene_num = args.scene
+#     if args.scene == 'random1':
+#         scene_num = 205
+#     else:
+#         # scene_num = int(args.scene)
+#         scene_num = args.scene
     
-    if args.seed is not None:
-        add_requirements['seeds'] = [args.seed] * args.trials_before_fail
+#     if args.seed is not None:
+#         add_requirements['seeds'] = [args.seed] * args.trials_before_fail
 
-    # avoid failure seeds or combinations
-    # TODO specify additional requirements (like favorable seeds and object repeats)
+#     # avoid failure seeds or combinations
+#     # TODO specify additional requirements (like favorable seeds and object repeats)
 
-    task_tuple = (gtype, pickup_obj, movable_obj, receptacle_obj, scene_num)
+#     task_tuple = (gtype, pickup_obj, movable_obj, receptacle_obj, scene_num)
 
-    return task_tuple, add_requirements
+#     return task_tuple, add_requirements
 
 
-def main(args, thread_i=None):
+def main(args, task_names_dict, thread_i=0):
+
+
 
     if args.seed is not None:
         # keep agent start pos always the same
@@ -541,24 +558,25 @@ def main(args, thread_i=None):
     # create env and agent
     env = ThorEnv()
     game_state = TaskGameStateFullKnowledge(env)
-    agent = DeterministicPlannerAgent(thread_id=0, game_state=game_state)
+    agent = DeterministicPlannerAgent(thread_id=0, game_state=game_state) # TODO ?? thread_id?
 
-    # construct valid task tuple
-    task_tuple, add_requirements = sample_task_params(args)
-    task_name = make_task_name(task_tuple)
+    for curr_task_name in task_names_dict[thread_i]: 
 
-    # call sample_task_trajs
-    sampled_traj_dirs, errors = sample_task_trajs(
-        args, task_tuple, agent, env, obj_to_scene_ids, scene_id_to_objs, pickup_candidates, add_requirements)
+        # construct task tuple
+        task_tuple = curr_task_name.split('-')
 
-    # save the directory paths for success and failed trajectories, 
-    # and error counts to disk
-    save_bookkeeping_and_splits(
-        task_name, constants.DATA_SAVE_PATH, args.splits_dir,
-        sampled_traj_dirs, errors, thread_i)
+        # call sample_task_trajs
+        sampled_traj_dirs, errors = sample_task_trajs(
+            args, task_tuple, agent, env, obj_to_scene_ids, scene_id_to_objs, pickup_candidates, {})
+
+        # save the directory paths for success and failed trajectories, 
+        # and error counts to disk
+        save_bookkeeping_and_splits(
+            curr_task_name, constants.DATA_SAVE_PATH, args.splits_dir,
+            sampled_traj_dirs, errors, thread_i)
 
 def parallel_main(args):
-    procs = [mp.Process(target=main, args=(args, thread_i)) for thread_i in range(args.num_threads)]
+    procs = [mp.Process(target=main, args=(args, task_names_dict, thread_i)) for thread_i in range(args.num_threads)]
     try:
         for proc in procs:
             proc.start()
@@ -588,13 +606,17 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--num_threads", type=int, default=0, help="number of processes for parallel mode")
     # parser.add_argument('--json_file', type=str, default="", help="path to json file with trajectory dump")
 
+    # task params from list of previously failed trajectories
+    parser.add_argument('--task_names_path', type=str, help="path to text file. each line is a task name e.g. look_at_obj_in_light-BaseballBat-None-DeskLamp-301")
+
+    # TODO replace this
     # task params
-    parser.add_argument("--goal", type=str, default='random1', help='goal such as pick_two_obj_and_place. "random" for random pick.')
-    parser.add_argument("--pickup", type=str, default='random1', help='object name. "random" for random pick.')
-    parser.add_argument("--movable", type=str, default='random1', help='movable receptacle name. "random" for random pick.')
-    parser.add_argument("--receptacle", type=str, default='random1', help='receptacle name. "random" for random pick.')
-    parser.add_argument("--scene", type=str, default='random1', help='scene number. "999" for random pick.')
-    parser.add_argument("--seed", type=int, default=-1, help='scene number. -1 for random pick.')
+    # parser.add_argument("--goal", type=str, default='random1', help='goal such as pick_two_obj_and_place. "random" for random pick.')
+    # parser.add_argument("--pickup", type=str, default='random1', help='object name. "random" for random pick.')
+    # parser.add_argument("--movable", type=str, default='random1', help='movable receptacle name. "random" for random pick.')
+    # parser.add_argument("--receptacle", type=str, default='random1', help='receptacle name. "random" for random pick.')
+    # parser.add_argument("--scene", type=str, default='random1', help='scene number. "999" for random pick.')
+    # parser.add_argument("--seed", type=int, default=-1, help='scene number. -1 for random pick.')
 
     # number of tries
     parser.add_argument("--repeats_per_cond", type=int, default=3)
@@ -603,18 +625,40 @@ if __name__ == "__main__":
     parse_args = parser.parse_args()
     parse_args.save_path = '/'.join(parse_args.save_path.split('/'))
 
-    parse_args.seed = None if parse_args.seed == -1 else parse_args.seed
+    parse_args.seed = None
 
     # settings
     constants.TIME_NOW = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     # /data_alfred/demo_generated/new_trajectories_T{}
     constants.DATA_SAVE_PATH = parse_args.save_path[:-1] + f'_T{constants.TIME_NOW}/'
 
+    start_time = time.time()
+
+    # get task_names from file
+    with open(parse_args.task_names_path, 'r') as f:
+        task_names_list = f.read().splitlines()
+    task_names_list = task_names_list[:5000]
+
+    task_names_dict = {}
     if parse_args.in_parallel and parse_args.num_threads > 1:
+
+        # divide task among threads
+        quotient = len(task_names_list) // parse_args.num_threads
+        for thread_i in range(parse_args.num_threads):
+            task_names_dict[thread_i] = task_names_list[thread_i*quotient: (thread_i+1)*quotient]
+            if thread_i == parse_args.num_threads-1:
+                task_names_dict[thread_i] += task_names_list[(thread_i+1)*quotient:]
+
         parallel_main(parse_args)
         merge_thread_results(parse_args)
     else:
-        main(parse_args)
+
+        task_names_dict[0] = task_names_list
+        main(parse_args, task_names_dict)
+
+    print('-------------------------------------------------------')
+    print("total time:")
+    print(time.time() - start_time)
 
     # if parse_args.seed is not None:
     #     # All threads will give same result if seed is the same
@@ -624,3 +668,6 @@ if __name__ == "__main__":
     #     merge_thread_results(parse_args)
     # else:
     #     main(parse_args)
+
+
+# python scripts/sample_augmentation_trajectories_uniform.py --debug --task_names_path scripts/task_names.txt --save_path /root/data_alfred/demo_generated/new_trajectories/ --splits /root/data_alfred/splits/ --trials_before_fail 2 --in_parallel --num_threads 3 | tee /root/data_alfred/demo_generated/planner_sampling_logs/dummy.log
