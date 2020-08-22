@@ -637,7 +637,7 @@ if __name__ == "__main__":
     # get task_names from file
     with open(parse_args.task_names_path, 'r') as f:
         task_names_list = f.read().splitlines()
-    task_names_list = task_names_list[:5000]
+    task_names_list = task_names_list[4500:9000]
 
     task_names_dict = {}
     if parse_args.in_parallel and parse_args.num_threads > 1:
@@ -670,4 +670,6 @@ if __name__ == "__main__":
     #     main(parse_args)
 
 
-# python scripts/sample_augmentation_trajectories_uniform.py --debug --task_names_path scripts/task_names.txt --save_path /root/data_alfred/demo_generated/new_trajectories/ --splits /root/data_alfred/splits/ --trials_before_fail 2 --in_parallel --num_threads 3 | tee /root/data_alfred/demo_generated/planner_sampling_logs/dummy.log
+# python scripts/sample_augmentation_trajectories_uniform.py --debug --task_names_path scripts/task_names.txt --save_path /root/data_alfred/demo_generated/new_trajectories/ --splits /root/data_alfred/splits/ --trials_before_fail 2 --in_parallel --num_threads 3 | tee /root/data_alfred/demo_generated/planner_sampling_logs/20200816_sample_failed_9000_end.log
+
+# python scripts/sample_augmentation_trajectories_uniform.py --debug --task_names_path scripts/task_names.txt --save_path /root/data_alfred/demo_generated/new_trajectories/ --splits /root/data_alfred/splits/ --trials_before_fail 2 --in_parallel --num_threads 3 | tee /root/data_alfred/demo_generated/planner_sampling_logs/20200819_sample_4500_8999_end.log
