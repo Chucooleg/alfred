@@ -99,7 +99,7 @@ def make_demo_output(preds, data, model, level='low'):
         ex = load_task_json(model, task)
         # just the task_id 'traj_T...'
         i = model.get_task_and_ann_id(ex)
-        outputs[i] = {'p_lang_instr': preds[i]['lang_instr']}
+        outputs[i] = {'p_lang_instr': preds[i]['lang_instr'], 'task':task['task']}
         print(f'\n\n\n\nTASK {i} {level} level: {preds[i]["lang_instr"]}\n\n')
     return outputs
 

@@ -25,10 +25,6 @@ from collections import defaultdict
 import logging
 import progressbar
 
-import time
-import multiprocessing as mp
-import subprocess
-
 def load_task_json(args, task):
     '''
     load preprocessed json from disk
@@ -331,9 +327,7 @@ class CollectStates(EvalTask):
 
         return states, outpath
 
-def main(args, splits_to_thread_dict, thread_i=0):
-
-    raw_splits = splits_to_thread_dict[thread_i]
+def main(args):
 
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -342,6 +336,11 @@ def main(args, splits_to_thread_dict, thread_i=0):
     logger.addHandler(hdlr)
     print (f'Logger is writing to {log_file_path}')
 
+    # load splits
+    with open(args.raw_splits) as f:
+        raw_splits = json.load(f)
+    print(f'Raw Splits are : {raw_splits.keys()}')
+ 
     # start sim env
     env = ThorEnv()
     
@@ -412,19 +411,6 @@ def main(args, splits_to_thread_dict, thread_i=0):
             json.dump(failed_splits, f)
         print(f'New split file for failed trajectories is saved to {failed_splits_path}')
 
-
-def parallel_main(args):
-    procs = [mp.Process(target=main, args=(args, splits_to_thread_dict, thread_i)) for thread_i in range(args.num_threads)]
-    try:
-        for proc in procs:
-            proc.start()
-            time.sleep(0.1)
-    finally:
-        for proc in procs:
-            proc.join()
-        subprocess.call(["pkill", "-f", 'thor'])
-
-
 if __name__ == "__main__":
     parser = ArgumentParser()
 
@@ -451,25 +437,4 @@ if __name__ == "__main__":
     # parse_args.PLANNER_TIME_STAMP = re.findall('new_trajectories_T(.*)/', parse_args.data)[0]
     parse_args.PLANNER_TIME_STAMP = '20200823'
 
-    # load splits
-    with open(parse_args.raw_splits) as f:
-        raw_splits = json.load(f)
-    print(f'Raw Splits are : {raw_splits.keys()}')
-
-    # do multithreading # TODO use proper queue instead of dividing
-    splits_to_thread_dict = {}
-    if parse_args.in_parallel and parse_args.num_threads > 1:
-
-        # divide task among threads
-        quotient = len(raw_splits['augmentation']) // parse_args.num_threads
-
-        for thread_i in range(parse_args.num_threads):
-            splits_to_thread_dict[thread_i] = {'augmentation': raw_splits['augmentation'][thread_i*quotient: (thread_i+1)*quotient]}
-            if thread_i == parse_args.num_threads-1:
-                splits_to_thread_dict[thread_i]['augmentation'] += raw_splits['augmentation'][(thread_i+1)*quotient:]
-
-        parallel_main(parse_args)
-    else:
-        splits_to_thread_dict[0] = raw_splits
-        main(parse_args, splits_to_thread_dict)
-
+    main(parse_args)

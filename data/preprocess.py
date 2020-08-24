@@ -36,10 +36,10 @@ class Dataset(object):
         '''
         converts words to unique integers
         '''
-        # if action_high:
-        #     words = [w.strip().lower().replace('sink', 'sinkbasin').replace('bathtub', 'bathtubbasin') for w in words]
-        # else:
-        words = [w.strip().lower() for w in words]
+        if action_high:
+            words = [w.strip().lower().replace('sink', 'sinkbasin').replace('bathtub', 'bathtubbasin') for w in words]
+        else:
+            words = [w.strip().lower() for w in words]
         return vocab.word2index(words, train=train)
 
 
@@ -90,7 +90,7 @@ class Dataset(object):
 
                 # save preprocessed json
                 if demo_mode:
-                    preprocessed_json_path = os.path.join(preprocessed_folder, "demo_%d.json" % r_idx)
+                    preprocessed_json_path = os.path.join(preprocessed_folder, "demo_%d.json" % r_idx) # HACKY
                 else:
                     preprocessed_json_path = os.path.join(preprocessed_folder, "ann_%d.json" % r_idx)
                 with open(preprocessed_json_path, 'w') as f:

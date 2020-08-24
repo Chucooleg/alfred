@@ -637,7 +637,7 @@ if __name__ == "__main__":
     # get task_names from file
     with open(parse_args.task_names_path, 'r') as f:
         task_names_list = f.read().splitlines()
-    task_names_list = task_names_list[4500:9000]
+    task_names_list = task_names_list[4500:9000] # TODO hacky,use proper queue
 
     task_names_dict = {}
     if parse_args.in_parallel and parse_args.num_threads > 1:

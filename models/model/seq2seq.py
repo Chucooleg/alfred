@@ -761,7 +761,7 @@ class Module(nn.Module):
         '''
         returns the folder path of a trajectory
         '''
-        if ex['split'] != 'demo':
+        if ex['split'] not in ['demo', 'augmentation']:
             return os.path.join(self.args.data, ex['split'], *(ex['root'].split('/')[-2:]))
         else:
             # for demo use, we dont put traj in separate split directories
