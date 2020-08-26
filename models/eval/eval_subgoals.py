@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 from datetime import datetime
 from env.thor_env import ThorEnv
-from eval import Eval
+from eval_agent import Eval
 
 
 class EvalSubgoals(Eval):
@@ -46,7 +46,7 @@ class EvalSubgoals(Eval):
                 subgoal_idxs = [sg['high_idx'] for sg in traj['plan']['high_pddl'] if sg['discrete_action']['action'] in subgoals_to_evaluate]
                 for eval_idx in subgoal_idxs:
                     print("No. of trajectories left: %d" % (task_queue.qsize()))
-                    cls.evaluate(env, model, eval_idx, r_idx, resnet, traj, args, lock, successes, failures, results, demo_mode=demo_mode)
+                    cls.evaluate(env, model, eval_idx, r_idx, resnet, traj, args, lock, successes, failures, results)
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -56,19 +56,19 @@ class EvalSubgoals(Eval):
         env.stop()
 
     @classmethod
-    def evaluate(cls, env, model, eval_idx, r_idx, resnet, traj_data, args, lock, successes, failures, results, demo_mode=False):
+    def evaluate(cls, env, model, eval_idx, r_idx, resnet, traj_data, args, lock, successes, failures, results):
         # reset model
         model.reset()
 
         # setup scene
         reward_type = 'dense'
-        cls.setup_scene(env, traj_data, r_idx, args, reward_type=reward_type, demo_mode=demo_mode)
+        cls.setup_scene(env, traj_data, r_idx, args, reward_type=reward_type)
 
         # expert demonstration to reach eval_idx-1
         expert_init_actions = [a['discrete_action'] for a in traj_data['plan']['low_actions'] if a['high_idx'] < eval_idx]
 
         # subgoal info
-        ann_key = 'explainer_annotations' if demo_mode else 'turk_annotations'
+        ann_key = 'turk_annotations'
         subgoal_action = traj_data['plan']['high_pddl'][eval_idx]['discrete_action']['action']
         subgoal_instr = traj_data[ann_key]['anns'][r_idx]['high_descs'][eval_idx]
 

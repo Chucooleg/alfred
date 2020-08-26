@@ -403,10 +403,11 @@ def main(args, splits_to_thread_dict, thread_i=0):
         json.dump(out_splits, f)
     print(f'New split file for successful trajectories is saved to {out_splits_path}')
 
-    # save failed splits if debuggin
+    # save failed splits if debugging
     if args.debug:
         # save failed splits
         # /root/data_alfred/splits/demo_june13_failed.json
+        # TODO need to merge results from threads!
         failed_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', '_failed.json'))
         with open(failed_splits_path, 'w') as f:
             json.dump(failed_splits, f)

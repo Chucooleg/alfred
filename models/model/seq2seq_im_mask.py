@@ -1,4 +1,5 @@
 import os
+import sys
 import torch
 import numpy as np
 import nn.vnn as vnn
@@ -6,18 +7,19 @@ import collections
 from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
-from model.seq2seq import Module as Base
+from model.seq2seq_agent import Module as Base
 from models.utils.metric import compute_f1, compute_exact
+sys.path.append(os.path.join(os.environ['ALFRED_ROOT'], 'gen'))
 from gen.utils.image_util import decompress_mask
 
 
 class Module(Base):
 
-    def __init__(self, args, vocab, object_vocab=None):
+    def __init__(self, args, vocab):
         '''
         Seq2Seq agent
         '''
-        super().__init__(args, vocab, object_vocab=None)
+        super().__init__(args, vocab)
 
         # encoder and self-attention
         self.enc = nn.LSTM(args.demb, args.dhid, bidirectional=True, batch_first=True)
@@ -67,7 +69,7 @@ class Module(Base):
         device = torch.device('cuda') if self.args.gpu else torch.device('cpu')
         feat = collections.defaultdict(list)
 
-        for ex in batch:
+        for ex_i, ex in enumerate(batch):
             ###########
             # auxillary
             ###########
@@ -105,13 +107,36 @@ class Module(Base):
             if load_frames and not self.test_mode:
                 root = self.get_task_root(ex)
                 im = torch.load(os.path.join(root, self.feat_pt))
-                keep = [None] * len(ex['plan']['low_actions'])
-                for i, d in enumerate(ex['images']):
-                    # only add frames linked with low-level actions (i.e. skip filler frames like smooth rotations and dish washing)
-                    if keep[d['low_idx']] is None:
-                        keep[d['low_idx']] = im[i]
-                keep.append(keep[-1])  # stop frame
-                feat['frames'].append(torch.stack(keep, dim=0))
+
+                num_low_actions = len(ex['plan']['low_actions'])
+                num_feat_frames = im.shape[0]
+
+                if num_low_actions != num_feat_frames:
+                    keep = [None] * len(ex['plan']['low_actions'])
+                    for i, d in enumerate(ex['images']):
+                        # only add frames linked with low-level actions (i.e. skip filler frames like smooth rotations and dish washing)
+                        if keep[d['low_idx']] is None:
+                            keep[d['low_idx']] = im[i]
+                    keep.append(keep[-1])  # stop frame
+                    feat['frames'].append(torch.stack(keep, dim=0))
+                else:
+                    feat['frames'].append(torch.cat([im, im[-1].unsqueeze(0)], dim=0))  # add stop frame
+
+
+            # # load Resnet features from disk
+            # if load_frames and not self.test_mode:
+            #     root = self.get_task_root(ex)
+            #     im = torch.load(os.path.join(root, self.feat_pt))
+            #     keep = [None] * len(ex['plan']['low_actions'])
+            #     for i, d in enumerate(ex['images']):
+            #         # only add frames linked with low-level actions (i.e. skip filler frames like smooth rotations and dish washing)
+            #         if keep[d['low_idx']] is None:
+            #             try:
+            #                 keep[d['low_idx']] = im[i]
+            #             except:
+            #                 import pdb; pdb.set_trace()
+            #     keep.append(keep[-1])  # stop frame
+            #     feat['frames'].append(torch.stack(keep, dim=0))
 
 
             #########

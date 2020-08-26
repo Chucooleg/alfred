@@ -534,7 +534,10 @@ class ActionFrameAttnEncoderPerSubgoalMaxPool(ActionFrameAttnEncoderPerSubgoal):
             obj_state_change = self.max_pool_object_features(feat_subgoal['object_token_id'], feat_subgoal['object_state_change'])
 
         # ( B, t, args.demb+args.dframe+args.dhid+args.dhid)
-        inp_seq = torch.cat([emb_act, vis_feat, obj_visible, obj_state_change], dim=2)
+        try:
+            inp_seq = torch.cat([emb_act, vis_feat, obj_visible, obj_state_change], dim=2)
+        except:
+            import pdb; pdb.set_trace()
         packed_input = pack_padded_sequence(inp_seq, seq_lengths, batch_first=True, enforce_sorted=False)
 
         # Encode entire subgoal sequence

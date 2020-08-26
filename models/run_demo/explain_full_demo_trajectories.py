@@ -28,7 +28,7 @@ def load_task_json(model, task):
     '''
     load preprocessed demo json from disk
     '''    
-    json_path = os.path.join(model.args.data, task['task'], '%s' % model.args.pp_folder, "demo_%d.json" % task['repeat_idx'])
+    json_path = os.path.join(model.args.data, task['task'], 'traj_data.json')
     retry = 0
     while True:
         try:
@@ -73,7 +73,7 @@ def validate_vocab(args, model, level='low'):
         assert os.path.exists(data_vocab_path), 'data vocab path does not exist, cannot pass sanity check'
         assert torch.load(data_vocab_path) == model.vocab, 'data vocab and model vocab do not match, cannot pass sanity check'
 
-    if level == 'low':
+    if level == 'low' and not args.baseline:
         # validate object vocab
         data_obj_vocab_path = os.path.join(args.data, f'pp_{pp_suffix}.object_vocab')
         if (model.object_vocab is not None) or (os.path.exists(data_obj_vocab_path)):
@@ -103,27 +103,29 @@ def make_demo_output(preds, data, model, level='low'):
         print(f'\n\n\n\nTASK {i} {level} level: {preds[i]["lang_instr"]}\n\n')
     return outputs
 
-def write_ann_to_traj(preds, data, model, level='low'):
+
+def write_ann_to_traj(preds, data, model, baseline=False, level='low'):
     '''write predicted language back to trajectory on disk'''
 
     assert level in ['low', 'high']
+    ann_key = 'baseline_annotations' if baseline else 'explainer_annotations'
 
     for task in data:
         ex = load_task_json(model, task)
         i = model.get_task_and_ann_id(ex)
-        if 'explainer_annotations' not in ex.keys():
-            ex['explainer_annotations'] = {'anns':[{'task_desc':'', 'high_descs':[]}]}
+        if ann_key not in ex.keys():
+            ex[ann_key] = {'anns':[{'task_desc':'', 'high_descs':[]}]}
 
         if level == 'low':
             num_subgoal = max(preds[i]['lang_instr'].keys()) + 1
-            ex['explainer_annotations']['anns'][0]['high_descs'] = [preds[i]['lang_instr'][subgoal_j] for subgoal_j in range(num_subgoal)]
+            ex[ann_key]['anns'][0]['high_descs'] = [preds[i]['lang_instr'][subgoal_j] for subgoal_j in range(num_subgoal)]
         else:
-            ex['explainer_annotations']['anns'][0]['task_desc'] = preds[i]['lang_instr']
+            ex[ann_key]['anns'][0]['task_desc'] = preds[i]['lang_instr']
         
         overwrite_task_json(model, task, ex)
 
 
-def pred_and_save(split, split_name, model, batch_size, dout, level='low', debug=False):
+def pred_and_save(split, split_name, model, batch_size, dout, baseline=False, level='low', debug=False):
     assert level in ['low', 'high']
 
     print(f'Processing {split_name} split with {level} level explainer model.')
@@ -140,7 +142,7 @@ def pred_and_save(split, split_name, model, batch_size, dout, level='low', debug
     print(f'Saving {level} level language instruction outputs for demo to {pred_out_path}')
 
     # write predicted language back to trajectory on disk
-    write_ann_to_traj(split_preds, split, model, level)
+    write_ann_to_traj(split_preds, split, model, baseline, level)
     print(f'Overwrote traj data on disk with {level} level language instruction included.')
 
     # make file to debug predictions for 
@@ -162,8 +164,8 @@ def main(args, splits, low_level_model, high_level_model=None):
     for split_name in splits.keys():
         split = splits[split_name]
         if high_level_model is not None:
-            pred_and_save(split, split_name, high_level_model, args.batch, args.dout, level='high', debug=args.debug)
-        pred_and_save(split, split_name, low_level_model, args.batch, args.dout, level='low', debug=args.debug)
+            pred_and_save(split, split_name, high_level_model, args.batch, args.dout, baseline=args.baseline, level='high', debug=args.debug)
+        pred_and_save(split, split_name, low_level_model, args.batch, args.dout, baseline=args.baseline, level='low', debug=args.debug)
 
 
 if __name__ == '__main__':
@@ -178,6 +180,9 @@ if __name__ == '__main__':
     parser.add_argument('--high_level_explainer_checkpt_path', help='path to model checkpoint', default='None')
     parser.add_argument('--gpu', help='use gpu', action='store_true')
     parser.add_argument('--batch', help='batch size', default=8, type=int)
+
+    # explainer or baseline
+    parser.add_argument('--baseline', help='predicting with baseline (true) or explainer (false)', action='store_true')
 
     # debugging
     parser.add_argument('--fast_epoch', help='fast epoch during debugging', action='store_true')

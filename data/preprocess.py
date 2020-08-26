@@ -36,10 +36,10 @@ class Dataset(object):
         '''
         converts words to unique integers
         '''
-        if action_high:
-            words = [w.strip().lower().replace('sink', 'sinkbasin').replace('bathtub', 'bathtubbasin') for w in words]
-        else:
-            words = [w.strip().lower() for w in words]
+        # if action_high: TODO don't need to do this if we do not use the object args in high actions downstream
+        #     words = [w.strip().lower().replace('sink', 'sinkbasin').replace('bathtub', 'bathtubbasin') for w in words]
+        # else:
+        words = [w.strip().lower() for w in words]
         return vocab.word2index(words, train=train)
 
 
@@ -107,72 +107,116 @@ class Dataset(object):
         vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
         torch.save(self.vocab, vocab_data_path)
 
-    def preprocess_splits_augmentation(self, splits, filename, timestamp):
+    def preprocess_splits_augmentation(self, splits, baseline=False):
         '''
-        Preprocess Explainer predicted instructions on training set
-        filename: str. e.g. 'explained_instructions_temperature_0.75_T20200810_1829.json', 'baseline_instructions_temperature_0.75_T20200810_1829.json'
-        timestamp: str: '20200810_1829'
+        Preprocess newly sampled trajectories with explainer or baseline predicted instructions. 
+        Augmented data is used for training only.
         '''
-        out_prefix = 'aug'
-        if 'explain' in filename:
-            out_prefix += '_explainer'
-        elif 'baseline' in filename:
-            out_prefix += '_baseline'
+        d = splits['augmentation']
 
-        # for k in ['train', 'valid_seen', 'valid_unseen']:
-        for k in ['train']: 
-            d = splits[k]
+        if self.args.fast_epoch:
+            d = d[:16]
+        
+        for task in progressbar.progressbar(d):
 
-            # debugging:
-            if self.args.fast_epoch:
-                d = d[:16]
+            # make output preprocessed folder
+            preprocessed_folder = os.path.join(self.args.data, task['task'], 'pp_baseline' if baseline else 'pp_explainer')
+            if not os.path.isdir(preprocessed_folder):
+                os.makedirs(preprocessed_folder)
 
-            for task in progressbar.progressbar(d):
+            # load raw traj file
+            raw_traj_p = os.path.join(self.args.data, task['task'], 'traj_data.json')
+            with open(raw_traj_p, 'r') as f:
+                ex = json.load(f)
+            traj = ex.copy()
+            r_idx = 0
+
+            # set root & split
+            traj['root'] = os.path.join(self.args.data, task['task'])
+            traj['split'] = 'train_aug'            
+
+            # numericalize language
+            self.process_language(ex, traj, r_idx, ann_key='baseline_annotations' if baseline else 'explainer_annotations')
+
+            # numericalize actions
+            self.process_actions(ex, traj, train=False, language_already_processed=True)            
+
+            # save out
+            preprocessed_json_path = os.path.join(preprocessed_folder, f"ann_{r_idx}.json")
+            with open(preprocessed_json_path, 'w') as f:
+                json.dump(traj, f, sort_keys=True, indent=4)               
+
+        # save vocab in data path
+        vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
+        torch.save(self.vocab, vocab_data_path)             
+
+
+    # def preprocess_splits_augmentation_temperature_sampled(self, splits, filename, timestamp):
+    #     '''
+    #     Preprocess Explainer predicted instructions on training set
+    #     filename: str. e.g. 'explained_instructions_temperature_0.75_T20200810_1829.json', 'baseline_instructions_temperature_0.75_T20200810_1829.json'
+    #     timestamp: str: '20200810_1829'
+    #     '''
+    #     out_prefix = 'aug'
+    #     if 'explain' in filename:
+    #         out_prefix += '_explainer'
+    #     elif 'baseline' in filename:
+    #         out_prefix += '_baseline'
+
+    #     # for k in ['train', 'valid_seen', 'valid_unseen']:
+    #     for k in ['train']: 
+    #         d = splits[k]
+
+    #         # debugging:
+    #         if self.args.fast_epoch:
+    #             d = d[:16]
+
+    #         for task in progressbar.progressbar(d):
                 
-                if task['repeat_idx'] == 0:
+    #             if task['repeat_idx'] == 0:
 
-                    # make output preprocessed folder
-                    preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
-                    if not os.path.isdir(preprocessed_folder):
-                        os.makedirs(preprocessed_folder)    
+    #                 # make output preprocessed folder
+    #                 preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
+    #                 if not os.path.isdir(preprocessed_folder):
+    #                     os.makedirs(preprocessed_folder)    
 
-                    # load traj file
-                    if os.path.exists(os.path.join(preprocessed_folder, "ann_0.json")):
-                        # load ann_0.json, skip some preprocessing
-                        json_path = os.path.join(preprocessed_folder, "ann_0.json")
-                        use_raw_traj = False
-                    else:
-                        # load raw traj file.
-                        json_path = os.path.join(self.args.data, k, task['task'], 'traj_data.json')
-                        use_raw_traj = True
-                    with open(json_path) as f:
-                        ex = json.load(f)
-                    traj = ex.copy()
+    #                 # load traj file
+    #                 if os.path.exists(os.path.join(preprocessed_folder, "ann_0.json")):
+    #                     # load ann_0.json, skip some preprocessing
+    #                     json_path = os.path.join(preprocessed_folder, "ann_0.json")
+    #                     use_raw_traj = False
+    #                 else:
+    #                     # load raw traj file.
+    #                     json_path = os.path.join(self.args.data, k, task['task'], 'traj_data.json')
+    #                     use_raw_traj = True
+    #                 with open(json_path) as f:
+    #                     ex = json.load(f)
+    #                 traj = ex.copy()
 
-                    # load sampled instructions
-                    sampled_instr_json_path = os.path.join(self.args.data, k, task['task'], filename) 
-                    with open(sampled_instr_json_path, 'r') as f:
-                        sampled_instrs = json.load(f)
+    #                 # load sampled instructions
+    #                 sampled_instr_json_path = os.path.join(self.args.data, k, task['task'], filename) 
+    #                 with open(sampled_instr_json_path, 'r') as f:
+    #                     sampled_instrs = json.load(f)
 
-                    # root & split
-                    traj['root'] = os.path.join(self.args.data, task['task'])
-                    traj['split'] = k
+    #                 # root & split
+    #                 traj['root'] = os.path.join(self.args.data, task['task'])
+    #                 traj['split'] = k
                     
-                    # numericalize actions for train/valid splits
-                    if 'test' not in k:
-                        self.process_actions(ex, traj, train=False, language_already_processed=False)
+    #                 # numericalize actions for train/valid splits
+    #                 if 'test' not in k:
+    #                     self.process_actions(ex, traj, train=False, language_already_processed=False)
 
-                    # loop through 
-                    for r_idx, instrs in enumerate(sampled_instrs):
-                        traj['repeat_idx'] = r_idx
+    #                 # loop through 
+    #                 for r_idx, instrs in enumerate(sampled_instrs):
+    #                     traj['repeat_idx'] = r_idx
 
-                        self.process_augmented_language(instrs['high_descs'], traj, r_idx)
+    #                     self.process_augmented_language(instrs['high_descs'], traj, r_idx)
 
-                        aligment_check = self.check_lang_action_segment_alignments(traj, apply_fix=use_raw_traj)
+    #                     aligment_check = self.check_lang_action_segment_alignments(traj, apply_fix=use_raw_traj)
 
-                        preprocessed_json_path = os.path.join(preprocessed_folder, f"{out_prefix}_{r_idx}_T{timestamp}.json")
-                        with open(preprocessed_json_path, 'w') as f:
-                            json.dump(traj, f, sort_keys=True, indent=4)
+    #                     preprocessed_json_path = os.path.join(preprocessed_folder, f"{out_prefix}_{r_idx}_T{timestamp}.json")
+    #                     with open(preprocessed_json_path, 'w') as f:
+    #                         json.dump(traj, f, sort_keys=True, indent=4)
 
 
     def process_augmented_language(self, instrs, traj, r_idx):
@@ -194,10 +238,10 @@ class Dataset(object):
             'repeat_idx': r_idx
         } 
 
-    def process_language(self, ex, traj, r_idx, train=True, demo_mode=False):
+    def process_language(self, ex, traj, r_idx, train=True, ann_key='turk_annotations'):
+        '''tokenize language, save to traj['ann'], numeralize language tokens, save to traj['num']'''
 
         # tokenize and numerical language, save numericalized to traj
-        ann_key = 'explainer_annotations' if demo_mode else 'turk_annotations'
         tokenized_goal, tokenized_instrs = self.numeralize_instr(
             traj=traj,
             goal=ex[ann_key]['anns'][r_idx]['task_desc'], 
@@ -284,7 +328,7 @@ class Dataset(object):
             traj['num']['action_high'].append({
                 'high_idx': a['high_idx'],
                 'action': self.vocab['action_high'].word2index(a['discrete_action']['action'], train=train),
-                'action_high_args': self.numericalize(self.vocab['action_high'], a['discrete_action']['args'], train=train, action_high=True),
+                # 'action_high_args': self.numericalize(self.vocab['action_high'], a['discrete_action']['args'], train=train, action_high=True), TODO seems not used in pipeline?
             })
 
         # fix if language and action segments are not aligned

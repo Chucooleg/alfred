@@ -1,4 +1,3 @@
-import os
 import json
 import pprint
 import random
@@ -29,27 +28,21 @@ class Eval(object):
         # load model
         print("Loading: ", self.args.model_path)
         M = import_module(self.args.model)
-        self.model, optimizer, _, _ = M.Module.load(self.args.model_path, {'predict_high_level_goal':False, 'object_repr':None})
+        self.model, optimizer, _, _ = M.Module.load(self.args.model_path)
         self.model.share_memory()
         self.model.eval()
         self.model.test_mode = True
 
         # updated args
-        if args.demo_mode:
-            self.model.args.dout = os.path.join(args.data, f'dout_alfred_agent_model:{self.args.model}')
-            self.model.args.pp_folder = 'pp_model:{}'.format(self.args.model)
-            self.model.demo_mode = True
-            self.model.args.data = self.args.data
-        else:
-            self.model.args.dout = self.args.model_path.replace(self.args.model_path.split('/')[-1], '')
-            self.model.args.data = self.args.data if self.args.data else self.model.args.data
+        self.model.args.dout = self.args.model_path.replace(self.args.model_path.split('/')[-1], '')
+        self.model.args.data = self.args.data if self.args.data else self.model.args.data
 
         # preprocess and save
         if args.preprocess:
             print("\nPreprocessing dataset and saving to %s folders ... This is will take a while. Do this once as required:" % self.model.args.pp_folder)
             self.model.args.fast_epoch = self.args.fast_epoch
             dataset = Dataset(self.model.args, self.model.vocab)
-            dataset.preprocess_splits(self.splits, train_vocab=False, demo_mode=args.demo_mode)
+            dataset.preprocess_splits(self.splits)
 
         # load resnet
         args.visual_model = 'resnet18'
@@ -70,12 +63,7 @@ class Eval(object):
         create queue of trajectories to be evaluated
         '''
         task_queue = self.manager.Queue()
-        if self.args.demo_mode:
-            files = []
-            for split_name in self.splits.keys():
-                files += self.splits[split_name]
-        else:
-            files = self.splits[self.args.eval_split]
+        files = self.splits[self.args.eval_split]
 
         # debugging: fast epoch
         if self.args.fast_epoch:
@@ -86,11 +74,6 @@ class Eval(object):
         for traj in files:
             task_queue.put(traj)
         return task_queue
-
-    def run_main(self):
-        '''no multi-processing'''
-        task_queue = self.queue_tasks()
-        self.run(self.model, self.resnet, task_queue, self.args, None, self.successes, self.failures, self.results)
 
     def spawn_threads(self):
         '''
@@ -114,7 +97,7 @@ class Eval(object):
         self.save_results()
 
     @classmethod
-    def setup_scene(cls, env, traj_data, r_idx, args, reward_type='dense', demo_mode=False):
+    def setup_scene(cls, env, traj_data, r_idx, args, reward_type='dense'):
         '''
         intialize the scene and agent from the task info
         '''
@@ -132,9 +115,7 @@ class Eval(object):
         env.step(dict(traj_data['scene']['init_action']))
 
         # print goal instr
-        if r_idx is not None:
-            ann_key = 'explainer_annotations' if demo_mode else 'turk_annotations'
-            print("Task: %s" % (traj_data[ann_key]['anns'][r_idx]['task_desc']))
+        print("Task: %s" % (traj_data['turk_annotations']['anns'][r_idx]['task_desc']))
 
         # setup task for reward
         env.set_task(traj_data, args, reward_type=reward_type)

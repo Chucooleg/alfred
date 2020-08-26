@@ -3,7 +3,7 @@ import json
 import numpy as np
 from PIL import Image
 from datetime import datetime
-from models.eval.eval import Eval
+from models.eval.eval_agent import Eval
 from env.thor_env import ThorEnv
 from gen.scripts.augment_trajectories import save_images_in_events
 
@@ -13,7 +13,7 @@ class EvalTask(Eval):
     '''
 
     @classmethod
-    def run(cls, model, resnet, task_queue, args, lock, successes, failures, results, demo_mode=False):
+    def run(cls, model, resnet, task_queue, args, lock, successes, failures, results):
         '''
         evaluation loop
         '''
@@ -31,7 +31,7 @@ class EvalTask(Eval):
                 r_idx = task['repeat_idx']
                 print("Evaluating: %s" % (traj['root']))
                 print("No. of trajectories left: %d" % (task_queue.qsize()))
-                cls.evaluate(env, model, r_idx, resnet, traj, args, lock, successes, failures, results, demo_mode=demo_mode)
+                cls.evaluate(env, model, r_idx, resnet, traj, args, lock, successes, failures, results)
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -42,19 +42,19 @@ class EvalTask(Eval):
 
 
     @classmethod
-    def evaluate(cls, env, model, r_idx, resnet, traj_data, args, lock, successes, failures, results, demo_mode=False):
+    def evaluate(cls, env, model, r_idx, resnet, traj_data, args, lock, successes, failures, results):
         # reset model
         model.reset()
 
         # setup scene
         reward_type = 'dense'
-        cls.setup_scene(env, traj_data, r_idx, args, reward_type=reward_type, demo_mode=demo_mode)
+        cls.setup_scene(env, traj_data, r_idx, args, reward_type=reward_type)
 
         # extract language features
         feat = model.featurize([traj_data], load_mask=False)
 
         # goal instr
-        ann_key = 'explainer_annotations' if demo_mode else 'turk_annotations'
+        ann_key = 'turk_annotations'
         goal_instr = traj_data[ann_key]['anns'][r_idx]['task_desc']
 
         done, success = False, False
