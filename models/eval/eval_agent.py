@@ -67,7 +67,7 @@ class Eval(object):
 
         # debugging: fast epoch
         if self.args.fast_epoch:
-            files = files[:16]
+            files = files[:8]
 
         if self.args.shuffle:
             random.shuffle(files)

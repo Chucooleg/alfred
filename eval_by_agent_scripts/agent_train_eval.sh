@@ -18,14 +18,13 @@ export AUGMENTATION_DATA=$DATA_ROOT/json_data_augmentation_20200820
 export SCRIPT_HOME=$ALFRED_ROOT/eval_by_agent_scripts/
 cd $SCRIPT_HOME
 
-# !!!!!!!!!!!!!!!!!!! remove fast epoch from exp_1_train_eval.sh
 # !!!!!!!!!!!!!!!!!!! add | tee to write logs to file
 
 echo '--------------------------------------------------------------------------------------'
 echo 'Start Experiment 1 - Annotate all failures with Explainer and with Baseline.  Retrain agent and evaluate'
 # Original Training set with original human annotation, plus failures annotated by Explainer vs with Baseline
-# export SPLITS=$DATA_ROOT/splits/data_augmentation_experiment1_20200826.json 
-export SPLITS=$DATA_ROOT/splits/agent_augmentation_20200825.json # TOY
+export SPLITS=$DATA_ROOT/splits/data_augmentation_experiment1_20200826.json 
+# export SPLITS=$DATA_ROOT/splits/agent_augmentation_20200825.json # TOY
 echo Split file $SPLITS
 
 echo '-------------------------------'
@@ -41,15 +40,15 @@ bash $SCRIPT_HOME/exp_1_train_eval.sh
 
 
 
-echo '--------------------------------------------------------------------------------------'
-echo 'Start Experiment 2 - Retrain agent on only half the original training data and evaluate '
-# Half of original training set
-export SPLITS=$DATA_ROOT/splits/?????????????????????????????????????????????????????????????
-echo Split file $SPLITS
+# echo '--------------------------------------------------------------------------------------'
+# echo 'Start Experiment 2 - Retrain agent on only half the original training data and evaluate '
+# # Half of original training set
+# export SPLITS=$DATA_ROOT/splits/?????????????????????????????????????????????????????????????
+# echo Split file $SPLITS
 
-echo '-------------------------------'
-# 2 Half of original training set, explainer/baseline are not used
-bash $SCRIPT_HOME/exp_2_train_eval.sh
+# echo '-------------------------------'
+# # 2 Half of original training set, explainer/baseline are not used
+# bash $SCRIPT_HOME/exp_2_train_eval.sh
 
 
 # TODO 
