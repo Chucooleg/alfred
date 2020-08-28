@@ -8,6 +8,17 @@ import numpy as np
 from torch import nn
 from tensorboardX import SummaryWriter
 from tqdm import trange
+import psutil
+
+from memory_profiler import profile
+fp = open('/root/data_alfred/exp/memory_profiler.log', 'w+')
+
+import psutil
+import logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+hdlr = logging.FileHandler('/root/data_alfred/exp/LOG_1606.log')
+logger.addHandler(hdlr)
 
 class Module(nn.Module):
 
@@ -39,7 +50,15 @@ class Module(nn.Module):
         # summary self.writer
         self.summary_writer = None
 
-    def run_train(self, splits, args=None, optimizer=None, start_epoch=0, end_epoch=20, start_iters=None):
+    def log_memory_hack(self, itr, codeline, log_memory):
+        if log_memory:
+            idx = str(itr) + ':' + str(codeline)
+            logging.info(f'{idx} CPU percent {psutil.cpu_percent()}')
+            logging.info(f'{idx} Percentage of used RAM {psutil.virtual_memory().percent}')
+            logging.info(f'{idx} Percentage of Available Memory {psutil.virtual_memory().available * 100 / psutil.virtual_memory().total}')
+            
+    @profile(stream=fp)
+    def run_train(self, splits, args=None, optimizer=None, start_epoch=0, end_epoch=20, start_iters=None, log_memory=True):
         '''
         training loop
         '''
@@ -68,6 +87,7 @@ class Module(nn.Module):
             augmentation = augmentation[:16]
             valid_seen = valid_seen[:16]
             valid_unseen = valid_unseen[:16]
+            print ('Using fast epoch......................')
 
         # add augmentation data
         train += augmentation
@@ -102,26 +122,41 @@ class Module(nn.Module):
             p_train = {}
             total_train_loss = list()
             random.shuffle(train) # shuffle every epoch
+            itr = 0
             for batch, feat in self.iterate(train, args.batch):
                 out = self.forward(feat)
+                self.log_memory_hack(itr, 'out', log_memory)
                 preds = self.extract_preds(out, batch, feat)
+                self.log_memory_hack(itr, 'preds', log_memory)
                 p_train.update(preds)
+                self.log_memory_hack(itr, 'p_train', log_memory)
                 loss = self.compute_loss(out, batch, feat)
+                self.log_memory_hack(itr, 'loss', log_memory)
                 for k, v in loss.items():
                     ln = 'loss_' + k
                     m_train[ln].append(v.item())
                     self.summary_writer.add_scalar('train/' + ln, v.item(), train_iter)
+                self.log_memory_hack(itr, 'm_train_SW', log_memory)
 
                 # optimizer backward pass
                 optimizer.zero_grad()
+                self.log_memory_hack(itr, 'optimizer', log_memory)
                 sum_loss = sum(loss.values())
+                self.log_memory_hack(itr, 'sum_loss', log_memory)
                 sum_loss.backward()
+                self.log_memory_hack(itr, 'sum_loss backward', log_memory)
                 optimizer.step()
+                self.log_memory_hack(itr, 'optimizer step', log_memory)
 
                 self.summary_writer.add_scalar('train/loss', sum_loss, train_iter)
+                self.log_memory_hack(itr, 'add train loss scalar', log_memory)
                 sum_loss = sum_loss.detach().cpu()
+                self.log_memory_hack(itr, 'add train detach to cpu', log_memory)
                 total_train_loss.append(float(sum_loss))
+                self.log_memory_hack(itr, 'total train loss append', log_memory)
                 train_iter += self.args.batch
+                self.log_memory_hack(itr, 'add to train iter', log_memory)
+                itr += 1
 
             # compute metrics for train
             m_train = {k: sum(v) / len(v) for k, v in m_train.items()}

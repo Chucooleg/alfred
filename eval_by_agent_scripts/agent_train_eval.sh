@@ -23,15 +23,16 @@ cd $SCRIPT_HOME
 echo '--------------------------------------------------------------------------------------'
 echo 'Start Experiment 1 - Annotate all failures with Explainer and with Baseline.  Retrain agent and evaluate'
 # Original Training set with original human annotation, plus failures annotated by Explainer vs with Baseline
-export SPLITS=$DATA_ROOT/splits/data_augmentation_experiment1_20200826.json 
-# export SPLITS=$DATA_ROOT/splits/agent_augmentation_20200825.json # TOY
+# export SPLITS=$DATA_ROOT/splits/data_augmentation_experiment1_20200826.json 
+export SPLITS=$DATA_ROOT/splits/agent_augmentation_20200825.json # TOY
+# export SPLITS=$DATA_ROOT/splits/debug_20200827.json # Debug
 echo Split file $SPLITS
 
 echo '-------------------------------'
 # 1.1 With failure annotation by the explainer
 export AUGMENTATION_LANG_MODEL=explainer
 # training and eval_script
-bash $SCRIPT_HOME/exp_1_train_eval.sh
+bash $SCRIPT_HOME/exp_1_train_eval.sh  # remove --fast_epoch add augmentation back
 
 echo '-------------------------------'
 # 1.2 With failure annotation by the baseline

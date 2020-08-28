@@ -144,7 +144,7 @@ class Module(Base):
             #########
 
             if not self.test_mode:
-                # low-level action
+                # low-level aimport pdb; pdb.set_trace()tion
                 feat['action_low'].append([a['action'] for a in ex['num']['action_low']])
 
                 # low-level action mask
@@ -289,14 +289,15 @@ class Module(Base):
             # index to API actions
             words = self.vocab['action_low'].index2word(alow)
 
-            # sigmoid preds to binary mask
-            alow_mask = F.sigmoid(alow_mask)
-            p_mask = [(alow_mask[t] > 0.5).cpu().numpy() for t in range(alow_mask.shape[0])]
+            # # sigmoid preds to binary mask
+            # alow_mask = torch.sigmoid(alow_mask)
+            # # memory leak?
+            # p_mask = [(alow_mask[t] > 0.5).cpu().numpy() for t in range(alow_mask.shape[0])]
 
             task_id_ann = self.get_task_and_ann_id(ex)
             pred[task_id_ann] = {
                 'action_low': ' '.join(words),
-                'action_low_mask': p_mask,
+                # 'action_low_mask': p_mask,
             }
 
         return pred
