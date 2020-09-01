@@ -44,14 +44,14 @@ template = Template(r"""
         evaluate these Instructions by answering two questions at the bottom of this page, and click "Send". </p>
         
         <h2>The agent's actions</h2>
-        <video class="my-4" src="$video" width="256" height="256" controls></video>
+        <video class="my-4" src="$video" width="512" height="512" controls></video>
         
         <h2>The agent's instructions</h2>
         <ol>$instructions</ol>
         
         <div class="my-5">
             <h4>Q1: The instructions accurately describe the actions in the video.</h4>
-            Your assessment:
+            Please select your assessment:
             <div class="py-4">
                 <select id="q1-accurate" class="likert">
                     <option value="-2">Strongly disagree</option>
@@ -65,7 +65,7 @@ template = Template(r"""
         
         <div class="my-5">
             <h4>Q2: The instructions are readable and understandable.</h4>
-            Your assessment:
+            Please select your assessment:
             <div class="py-4">
                 <select id="q2-readable" class="likert">
                     <option value="-2">Strongly disagree</option>
@@ -78,9 +78,11 @@ template = Template(r"""
         </div>
         
         <div class="my-5">
-            <button class="btn btn-outline-primary btn-lg" id="btnSend">
-                <i class="fa fa-paper-plane" aria-hidden="true"></i> Send
-            </button>
+            <div class="text-center">
+                <button class="btn btn-outline-primary btn-lg" id="btnSend">
+                    <i class="fa fa-paper-plane" aria-hidden="true"></i> Send
+                </button>
+            </div>
         </div>
     </div>
     
