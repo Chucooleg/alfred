@@ -28,10 +28,15 @@ if __name__ == '__main__':
     parser.add_argument('--dout', help='where to save model', default='exp/model:{model}')
     parser.add_argument('--resume', help='load a checkpoint')
 
-    # augmentation
+    # data augmentation
     parser.add_argument('--use_augmentation', help='whether to add augmentation split to the train split', action='store_true')
     parser.add_argument('--augmentation_data', help='augmentation dataset folder', default='data/json_data_augmentation_20200820',type=str)
     parser.add_argument('--augmentation_lang_model', help='explainer or baseline labeled data', default='explainer', type=str)
+
+    # replace some data with auto-generated instructions
+    parser.add_argument('--use_autogeneration', help='whether to use autogeneration split', action='store_true')
+    parser.add_argument('--autogeneration_data', help='autogeneration dataset folder', default='data/json_feat_2.1.0',type=str)
+    parser.add_argument('--autogeneration_lang_model', help='explainer or baseline labeled data', default='explainer', type=str)
 
     # hyper parameters
     parser.add_argument('--batch', help='batch size', default=8, type=int)
@@ -75,6 +80,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.dout = args.dout.format(**vars(args))
     torch.manual_seed(args.seed)
+    torch.cuda.empty_cache()
 
     # check if dataset has been preprocessed
     if not os.path.exists(os.path.join(args.data, "%s.vocab" % args.pp_folder)) and not args.preprocess:

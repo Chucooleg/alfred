@@ -1,5 +1,3 @@
-data/
-/data/*
 *.pyc
 *-checkpoint.ipynb
 .vscode/

@@ -151,72 +151,72 @@ class Dataset(object):
         torch.save(self.vocab, vocab_data_path)             
 
 
-    # def preprocess_splits_augmentation_temperature_sampled(self, splits, filename, timestamp):
-    #     '''
-    #     Preprocess Explainer predicted instructions on training set
-    #     filename: str. e.g. 'explained_instructions_temperature_0.75_T20200810_1829.json', 'baseline_instructions_temperature_0.75_T20200810_1829.json'
-    #     timestamp: str: '20200810_1829'
-    #     '''
-    #     out_prefix = 'aug'
-    #     if 'explain' in filename:
-    #         out_prefix += '_explainer'
-    #     elif 'baseline' in filename:
-    #         out_prefix += '_baseline'
+    def preprocess_splits_augmentation_temperature_sampled(self, splits, filename, timestamp):
+        '''
+        Preprocess Explainer predicted instructions on training set
+        filename: str. e.g. 'explained_instructions_temperature_0.75_T20200810_1829.json', 'baseline_instructions_temperature_0.75_T20200810_1829.json'
+        timestamp: str: '20200810_1829'
+        '''
+        out_prefix = 'aug'
+        if 'explain' in filename:
+            out_prefix += '_explainer'
+        elif 'baseline' in filename:
+            out_prefix += '_baseline'
 
-    #     # for k in ['train', 'valid_seen', 'valid_unseen']:
-    #     for k in ['train']: 
-    #         d = splits[k]
+        # for k in ['train', 'valid_seen', 'valid_unseen']:
+        for k in ['train']: 
+            d = splits[k]
 
-    #         # debugging:
-    #         if self.args.fast_epoch:
-    #             d = d[:16]
+            # debugging:
+            if self.args.fast_epoch:
+                d = d[:16]
 
-    #         for task in progressbar.progressbar(d):
+            for task in progressbar.progressbar(d):
                 
-    #             if task['repeat_idx'] == 0:
+                if task['repeat_idx'] == 0:
 
-    #                 # make output preprocessed folder
-    #                 preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
-    #                 if not os.path.isdir(preprocessed_folder):
-    #                     os.makedirs(preprocessed_folder)    
+                    # make output preprocessed folder
+                    preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
+                    if not os.path.isdir(preprocessed_folder):
+                        os.makedirs(preprocessed_folder)    
 
-    #                 # load traj file
-    #                 if os.path.exists(os.path.join(preprocessed_folder, "ann_0.json")):
-    #                     # load ann_0.json, skip some preprocessing
-    #                     json_path = os.path.join(preprocessed_folder, "ann_0.json")
-    #                     use_raw_traj = False
-    #                 else:
-    #                     # load raw traj file.
-    #                     json_path = os.path.join(self.args.data, k, task['task'], 'traj_data.json')
-    #                     use_raw_traj = True
-    #                 with open(json_path) as f:
-    #                     ex = json.load(f)
-    #                 traj = ex.copy()
+                    # load traj file
+                    if os.path.exists(os.path.join(preprocessed_folder, "ann_0.json")):
+                        # load ann_0.json, skip some preprocessing
+                        json_path = os.path.join(preprocessed_folder, "ann_0.json")
+                        use_raw_traj = False
+                    else:
+                        # load raw traj file.
+                        json_path = os.path.join(self.args.data, k, task['task'], 'traj_data.json')
+                        use_raw_traj = True
+                    with open(json_path) as f:
+                        ex = json.load(f)
+                    traj = ex.copy()
 
-    #                 # load sampled instructions
-    #                 sampled_instr_json_path = os.path.join(self.args.data, k, task['task'], filename) 
-    #                 with open(sampled_instr_json_path, 'r') as f:
-    #                     sampled_instrs = json.load(f)
+                    # load sampled instructions
+                    sampled_instr_json_path = os.path.join(self.args.data, k, task['task'], filename) 
+                    with open(sampled_instr_json_path, 'r') as f:
+                        sampled_instrs = json.load(f)
 
-    #                 # root & split
-    #                 traj['root'] = os.path.join(self.args.data, task['task'])
-    #                 traj['split'] = k
+                    # root & split
+                    traj['root'] = os.path.join(self.args.data, task['task'])
+                    traj['split'] = k
                     
-    #                 # numericalize actions for train/valid splits
-    #                 if 'test' not in k:
-    #                     self.process_actions(ex, traj, train=False, language_already_processed=False)
+                    # numericalize actions for train/valid splits
+                    if 'test' not in k:
+                        self.process_actions(ex, traj, train=False, language_already_processed=False)
 
-    #                 # loop through 
-    #                 for r_idx, instrs in enumerate(sampled_instrs):
-    #                     traj['repeat_idx'] = r_idx
+                    # loop through 
+                    for r_idx, instrs in enumerate(sampled_instrs):
+                        traj['repeat_idx'] = r_idx
 
-    #                     self.process_augmented_language(instrs['high_descs'], traj, r_idx)
+                        self.process_augmented_language(instrs['high_descs'], traj, r_idx)
 
-    #                     aligment_check = self.check_lang_action_segment_alignments(traj, apply_fix=use_raw_traj)
+                        aligment_check = self.check_lang_action_segment_alignments(traj, apply_fix=use_raw_traj)
 
-    #                     preprocessed_json_path = os.path.join(preprocessed_folder, f"{out_prefix}_{r_idx}_T{timestamp}.json")
-    #                     with open(preprocessed_json_path, 'w') as f:
-    #                         json.dump(traj, f, sort_keys=True, indent=4)
+                        preprocessed_json_path = os.path.join(preprocessed_folder, f"{out_prefix}_{r_idx}_T{timestamp}.json")
+                        with open(preprocessed_json_path, 'w') as f:
+                            json.dump(traj, f, sort_keys=True, indent=4)
 
 
     def process_augmented_language(self, instrs, traj, r_idx):

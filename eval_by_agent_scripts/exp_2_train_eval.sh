@@ -11,7 +11,7 @@ echo $DOUT
 cd $ALFRED_ROOT
 echo Start training agent $MODEL_NAME
 echo Will Save to $DOUT...
-python models/train/train_seq2seq_agent.py --data $DATA --model $MODEL --dout $DOUT --splits $SPLITS --pp_folder $PP --gpu --batch 8 --pm_aux_loss_wt 0.1 --subgoal_aux_loss_wt 0.1 --save_every_epoch
+python -m memory_profiler models/train/train_seq2seq_agent.py --data $DATA --model $MODEL --dout $DOUT --splits $SPLITS --pp_folder $PP --gpu --batch 8 --pm_aux_loss_wt 0.1 --subgoal_aux_loss_wt 0.1 --save_every_epoch --epoch 20 --batch 1
 
 # Eval
 export EVAL_SPLITS=$DATA_ROOT/splits/oct21.json
@@ -39,5 +39,5 @@ python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA 
 
 
 # move agent model, tensorboard events and results to blob
-cp -r $DOUT $BLOB_EXP_DIR
-echo Backed Up $DOUT to $BLOB_EXP_DIR
+# cp -r $DOUT $BLOB_EXP_DIR
+# echo Backed Up $DOUT to $BLOB_EXP_DIR 
