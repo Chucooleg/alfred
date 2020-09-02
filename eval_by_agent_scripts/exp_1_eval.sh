@@ -18,19 +18,19 @@ echo Eval Split file $EVAL_SPLITS
 echo 'Start Validation on Seen'
 export AGENT_MODEL=$DOUT/best_seen.pth
 export EVAL_SPLIT=valid_seen
-python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3 --fast_epoch | tee $DOUT/task_eval_valid_seen.log
+python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3 | tee $DOUT/task_eval_valid_seen.log
 
 # Eval on Validation Seen - Per Subgoal
 echo 'Start Validation on Seen - Per Subgoal'
-python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3 --subgoals all --fast_epoch | tee $DOUT/subgoal_eval_valid_seen.log
+python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3 --subgoals all | tee $DOUT/subgoal_eval_valid_seen.log
 
 
 # Eval on Validation Unseen
 echo 'Start Validation on Unseen'
 export AGENT_MODEL=$DOUT/best_unseen.pth
 export EVAL_SPLIT=valid_unseen
-python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3 --fast_epoch | tee $DOUT/task_eval_valid_unseen.log
+python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3 | tee $DOUT/task_eval_valid_unseen.log
 
 # Eval on Validation Unseen - Per Subgoal
 echo 'Start Validation on Unseen - Per Subgoal'
-python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3 --subgoals all --fast_epoch | tee $DOUT/subgoal_eval_valid_unseen.log
+python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3 --subgoals all | tee $DOUT/subgoal_eval_valid_unseen.log
