@@ -297,7 +297,7 @@ class Module(Base):
             task_id_ann = self.get_task_and_ann_id(ex)
             pred[task_id_ann] = {
                 'action_low': ' '.join(words),
-                # 'action_low_mask': p_mask,
+                'action_low_mask': p_mask if not model.training else None
             }
 
         return pred
