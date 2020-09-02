@@ -290,9 +290,10 @@ class Module(Base):
             words = self.vocab['action_low'].index2word(alow)
 
             # # sigmoid preds to binary mask
-            # alow_mask = torch.sigmoid(alow_mask)
-            # # memory leak?
-            # p_mask = [(alow_mask[t] > 0.5).cpu().numpy() for t in range(alow_mask.shape[0])]
+            if not self.training:
+                alow_mask = torch.sigmoid(alow_mask)
+                # # memory leak?
+                p_mask = [(alow_mask[t] > 0.5).cpu().numpy() for t in range(alow_mask.shape[0])]
 
             task_id_ann = self.get_task_and_ann_id(ex)
             pred[task_id_ann] = {
