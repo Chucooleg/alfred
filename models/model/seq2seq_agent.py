@@ -348,7 +348,12 @@ class Module(nn.Module):
             data_dir = self.args.data
             pp_folder = self.args.pp_folder
 
-        json_path = os.path.join(data_dir, task['task'], '%s' % pp_folder, 'ann_%d.json' % task['repeat_idx'])
+        if self.args.use_autogeneration and task['use_autogeneration']
+            json_prefix = 'aug_{}'.format(args.autogeneration_lang_model)
+        else:
+            json_prefix = 'ann'
+        json_path = os.path.join(data_dir, task['task'], '%s' % pp_folder, '{}_{}.json'.format(json_prefix, task['repeat_idx']))
+        import pdb; pdb.set_trace()
         with open(json_path) as f:
             data = json.load(f)
 

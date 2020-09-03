@@ -2,7 +2,7 @@ import os
 import progressbar
 
 
-for path, directories, files in os.walk('/root/alfred_data/json_feat_2.1.0_backup_20200826_agent_training'):
+for path, directories, files in os.walk('/root/data_alfred/json_feat_2.1.0_backup_20200826_agent_training'):
 
     for file in progressbar.progressbar(files):
         if ('aug_baseline' in file or 'aug_explainer' in file) and '.json' in file:

@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     # replace some data with auto-generated instructions
     parser.add_argument('--use_autogeneration', help='whether to use autogeneration split', action='store_true')
-    parser.add_argument('--autogeneration_data', help='autogeneration dataset folder', default='data/json_feat_2.1.0',type=str)
+    parser.add_argument('--autogeneration_data', help='autogeneration dataset folder', default='data/json_feat_2.1.0',type=str) #TODO not used
     parser.add_argument('--autogeneration_lang_model', help='explainer or baseline labeled data', default='explainer', type=str)
 
     # hyper parameters
