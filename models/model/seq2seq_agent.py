@@ -11,13 +11,13 @@ from tqdm import trange
 import psutil
 
 from memory_profiler import profile
-fp = open('/root/data_alfred/exp/memory_profiler.log', 'w+')
+fp = open(os.path.join(os.environ.get('DOUT'), 'memory_profiler.log'), 'w+')
 
 import psutil
 import logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-hdlr = logging.FileHandler('/root/data_alfred/exp/LOG_1606.log')
+hdlr = logging.FileHandler(os.path.join(os.environ.get('DOUT'),'LOG_memory_usage.log'))
 logger.addHandler(hdlr)
 
 class Module(nn.Module):
@@ -348,7 +348,7 @@ class Module(nn.Module):
             data_dir = self.args.data
             pp_folder = self.args.pp_folder
 
-        if self.args.use_autogeneration and (task.get('use_autogeneration', False)):
+        if getattr(self.args, 'use_autogeneration', False) and (task.get('use_autogeneration', False)):
             json_prefix = 'aug_{}'.format(self.args.autogeneration_lang_model)
         else:
             json_prefix = 'ann'
