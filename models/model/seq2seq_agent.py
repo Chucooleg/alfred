@@ -349,7 +349,7 @@ class Module(nn.Module):
             pp_folder = self.args.pp_folder
 
         if self.args.use_autogeneration and (task.get('use_autogeneration', False)):
-            json_prefix = 'aug_{}'.format(args.autogeneration_lang_model)
+            json_prefix = 'aug_{}'.format(self.args.autogeneration_lang_model)
         else:
             json_prefix = 'ann'
         json_path = os.path.join(data_dir, task['task'], '%s' % pp_folder, '{}_{}.json'.format(json_prefix, task['repeat_idx']))
