@@ -4,7 +4,7 @@
 # cd /home/legg/alfred/eval_by_agent_scripts/
 
 # General Path Setup
-export ENV_HOME=/root/home/hoyeung
+export ENV_HOME=/root/data/home/hoyeung
 export ALFRED_ROOT=$ENV_HOME/alfred
 export DATA_ROOT=/root/data_alfred
 # export BLOB_ROOT=$ENV_HOME/blob_alfred_data/ # for backup to container
