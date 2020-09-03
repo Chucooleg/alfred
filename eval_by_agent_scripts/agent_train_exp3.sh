@@ -56,7 +56,7 @@ cd $SCRIPT_HOME
 echo '--------------------------------------------------------------------------------------'
 echo 'Start Experiment 3 - Label the other half of the training data with the Explainer, retrain agent, eval '
 # Half of original training set, plus the other hald annotated by Explainer vs with Baseline
-export SPLITS=$DATA_ROOT/splits/data_augmentation_experiment3_20200901.json
+export SPLITS=$ALFRED_ROOT/data/splits/data_augmentation_experiment3_20200901.json
 echo Split file $SPLITS
 
 echo '-------------------------------'
