@@ -1,19 +1,12 @@
-import argparse
-import json
-from pathlib import Path
-from string import Template
 
-from tqdm import tqdm
-
-template = Template(r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="description" content="$title">
+    <meta name="description" content="trial_T20190908_213356_017769_b">
     <meta name="author" content="Legg Yeung, Yonatan Bisk, Alex Polozov">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>$title</title>
+    <title>trial_T20190908_213356_017769_b</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" 
           integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" crossorigin="anonymous">
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" 
@@ -39,10 +32,10 @@ template = Template(r"""
         results". Save the generated file and send it to the researcher who invited you to the study.</p>
         
         <h2>The agent's actions</h2>
-        <video class="my-4" src="$video" width="512" height="512" controls></video>
+        <video class="my-4" src="https://mturk.jessethomason.com/lang_2_plan/2.1.0/pick_clean_then_place_in_recep-Plate-None-CounterTop-10/trial_T20190908_213356_017769/video.mp4" width="512" height="512" controls></video>
         
         <h2>The agent's instructions</h2>
-        <ol>$instructions</ol>
+        <ol><li>turn right and walk to the counter to the left of the stove .</li>	<li>pick up the knife from the counter .</li>	<li>turn around and face the sink .</li>	<li>put the knife in the sink , rinse it off , and take it back out .</li>	<li>turn around and walk to the counter in front of you .</li>	<li>put the spoon on the pan on the counter .</li></ol>
         
         <form id="likert">
             <div class="my-4 form-row">
@@ -245,41 +238,22 @@ template = Template(r"""
             pom.click();
         }
     }
-    $$(function() {
-        $$('#likert').submit(function (e) {
-            let form = $$(this);
+    $(function() {
+        $('#likert').submit(function (e) {
+            let form = $(this);
             if (form[0].checkValidity() !== false) {
-                let q1 = $$('input[name=q1Radio]:checked').val();
-                let q2 = $$('input[name=q2Radio]:checked').val();
-                let q3 = $$('input[name=q3Radio]:checked').val();
-                let q4 = $$('input[name=q4Radio]:checked').val();
-                download('$title.json', `{ "id": "$title", "q1": $${q1}, "q2": $${q2}, "q3": $${q3}, "q4": $${q4} }`);
+                let q1 = $('input[name=q1Radio]:checked').val();
+                let q2 = $('input[name=q2Radio]:checked').val();
+                let q3 = $('input[name=q3Radio]:checked').val();
+                let q4 = $('input[name=q4Radio]:checked').val();
+                download('trial_T20190908_213356_017769_b.json', `{ "id": "trial_T20190908_213356_017769_b", "q1": ${q1}, "q2": ${q2}, "q3": ${q3}, "q4": ${q4} }`);
             }
             e.preventDefault();
             e.stopPropagation();
             form.addClass('was-validated');
         });
-        $$('#consentModal').modal('show');
+        $('#consentModal').modal('show');
     });
     </script>
 </body>
 </html>
-""")
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input', default='instructions_20200817.json',
-                        help='Path to the JSON file with instructions')
-    parser.add_argument('-o', '--out', default='html',
-                        help='Subdirectory for output HTML files')
-    args = parser.parse_args()
-
-    j = json.load(open(args.input))
-    out_dir = Path(args.out)
-    out_dir.mkdir(exist_ok=True, parents=True)
-    for entry in tqdm(j):
-        id: str = entry["id"].replace('baseline', 'b').replace('explainer', 'e')
-        instructions = '\t'.join(f"<li>{s}</li>" for s in entry["generation"])
-        html = template.substitute(title=id, video=entry["video_url"], instructions=instructions)
-        with open(out_dir / f"{id}.html", 'w') as out:
-            out.write(html)
