@@ -348,7 +348,7 @@ class Module(nn.Module):
             data_dir = self.args.data
             pp_folder = self.args.pp_folder
 
-        if self.args.use_autogeneration and task['use_autogeneration']
+        if self.args.use_autogeneration and task['use_autogeneration']:
             json_prefix = 'aug_{}'.format(args.autogeneration_lang_model)
         else:
             json_prefix = 'ann'
