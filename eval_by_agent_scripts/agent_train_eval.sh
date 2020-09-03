@@ -9,7 +9,7 @@ export ALFRED_ROOT=$ENV_HOME/alfred
 export DATA_ROOT=/root/data_alfred
 # export BLOB_ROOT=$ENV_HOME/blob_alfred_data/ # for backup to container
 # export BLOB_EXP_DIR=$BLOB_ROOT/exp_all/
-export DATA=$DATA_ROOT/json_feat_2.1.0_backup_20200826_agent_training
+export DATA=$DATA_ROOT/json_feat_2.1.0
 export PP=pp
 export MODEL=seq2seq_im_mask
 export AUGMENTATION_DATA=$DATA_ROOT/json_data_augmentation_20200820
@@ -28,13 +28,14 @@ export SPLITS=$DATA_ROOT/splits/data_augmentation_experiment1_20200826.json
 # export SPLITS=$DATA_ROOT/splits/debug_20200827.json # Debug
 echo Split file $SPLITS
 
-echo '-------------------------------'
-# 1.1 With failure annotation by the explainer
-export AUGMENTATION_LANG_MODEL=explainer
-# training and eval_script
-bash $SCRIPT_HOME/exp_1_train_eval.sh  # remove --fast_epoch add augmentation back
+# echo '-------------------------------'
+# # 1.1 With failure annotation by the explainer
+# export AUGMENTATION_LANG_MODEL=explainer
+# # training and eval_script
+# bash $SCRIPT_HOME/exp_1_train_eval.sh  # remove --fast_epoch add augmentation back
 
 echo '-------------------------------'
+echo 'Starting Experiment 1 on baseline'
 # 1.2 With failure annotation by the baseline
 export AUGMENTATION_LANG_MODEL=baseline
 bash $SCRIPT_HOME/exp_1_train_eval.sh
