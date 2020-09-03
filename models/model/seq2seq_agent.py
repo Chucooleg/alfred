@@ -353,7 +353,6 @@ class Module(nn.Module):
         else:
             json_prefix = 'ann'
         json_path = os.path.join(data_dir, task['task'], '%s' % pp_folder, '{}_{}.json'.format(json_prefix, task['repeat_idx']))
-        import pdb; pdb.set_trace()
         with open(json_path) as f:
             data = json.load(f)
 
