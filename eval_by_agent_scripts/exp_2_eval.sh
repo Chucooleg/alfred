@@ -2,7 +2,7 @@ echo 'WIthin Exp 2 Sub Script'
 
 # Set output Directory
 export MODEL_NAME=experiment_2_original_train_set_halved
-export DOUT=$DATA_ROOT/exp/model_$MODEL,name_$MODEL_NAME
+export DOUT=$DATA_ROOT/exp/model:$MODEL,name:$MODEL_NAME
 
 echo $MODEL_NAME
 echo $DOUT
