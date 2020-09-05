@@ -23,7 +23,7 @@ cd $SCRIPT_HOME
 echo '--------------------------------------------------------------------------------------'
 echo 'Start Experiment 1 - Annotate all failures with Explainer and with Baseline.  Retrain agent and evaluate'
 # Original Training set with original human annotation, plus failures annotated by Explainer vs with Baseline
-export SPLITS=$DATA_ROOT/splits/data_augmentation_experiment1_20200826.json 
+export SPLITS=$ALFRED_ROOT/data/splits/data_augmentation_experiment1_20200826.json 
 # export SPLITS=$DATA_ROOT/splits/agent_augmentation_20200825.json # TOY
 # export SPLITS=$DATA_ROOT/splits/debug_20200827.json # Debug
 echo Split file $SPLITS

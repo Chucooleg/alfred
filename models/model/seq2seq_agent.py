@@ -69,7 +69,11 @@ class Module(nn.Module):
         # HACK
         if args.lr != self.args.lr:
             self.args.lr = args.lr
-        
+        if args.data != self.args.data:
+            self.args.data = args.data
+        if args.splits != self.args.splits:
+            self.args.splits = args.splits
+
         args = self.args
 
         # splits
