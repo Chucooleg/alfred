@@ -13,8 +13,8 @@ cd $ALFRED_ROOT
 # echo Will Save to $DOUT...
 # python -m memory_profiler models/train/train_seq2seq_agent.py --data $DATA --model $MODEL --dout $DOUT --splits $SPLITS --pp_folder $PP --gpu --batch 8 --pm_aux_loss_wt 0.1 --subgoal_aux_loss_wt 0.1 --save_every_epoch --epoch 27 --resume $DOUT/net_epoch_19.pth  --lr 1e-5
 
-# # Eval
-# export EVAL_SPLITS=$DATA_ROOT/splits/oct21.json
+# Eval
+export EVAL_SPLITS=$DATA_ROOT/splits/oct21.json
 
 # # Eval on Validation Seen
 # echo 'Start Validation on Seen'
