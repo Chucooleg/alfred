@@ -134,4 +134,4 @@ if __name__ == '__main__':
             optimizer_to(optimizer, torch.device('cuda'))
 
     # start train loop
-    model.run_train(splits, optimizer=optimizer, start_epoch=start_epoch, end_epoch=end_epoch, start_iters=start_iters)
+    model.run_train(splits, args=args, optimizer=optimizer, start_epoch=start_epoch, end_epoch=end_epoch, start_iters=start_iters)

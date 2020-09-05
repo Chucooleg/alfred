@@ -64,7 +64,13 @@ class Module(nn.Module):
         '''
 
         # args
-        args = args or self.args
+        # args = args or self.args
+
+        # HACK
+        if args.lr != self.args.lr:
+            self.args.lr = args.lr
+        
+        args = self.args
 
         # splits
         train = splits['train']
@@ -101,6 +107,7 @@ class Module(nn.Module):
             json.dump(vars(args), f, indent=2)
 
         # optimizer
+        print('learning rate = {}'.format(args.lr))
         optimizer = optimizer or torch.optim.Adam(self.parameters(), lr=args.lr)
 
         # display dout
