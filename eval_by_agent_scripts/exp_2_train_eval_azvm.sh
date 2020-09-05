@@ -11,14 +11,14 @@ echo $DOUT
 cd $ALFRED_ROOT
 echo Start training agent $MODEL_NAME
 echo Will Save to $DOUT...
-python -m memory_profiler models/train/train_seq2seq_agent.py --data $DATA --model $MODEL --dout $DOUT --splits $SPLITS --pp_folder $PP --gpu --batch 8 --pm_aux_loss_wt 0.1 --subgoal_aux_loss_wt 0.1 --save_every_epoch --epoch 27 --resume $DOUT/net_epoch_19.pth  --lr 1e-5
+# python -m memory_profiler models/train/train_seq2seq_agent.py --data $DATA --model $MODEL --dout $DOUT --splits $SPLITS --pp_folder $PP --gpu --batch 8 --pm_aux_loss_wt 0.1 --subgoal_aux_loss_wt 0.1 --save_every_epoch --epoch 27 --resume $DOUT/net_epoch_19.pth  --lr 1e-5
 
 # Eval
 export EVAL_SPLITS=$DATA_ROOT/splits/oct21.json
 
 # Eval on Validation Seen
 echo 'Start Validation on Seen'
-export AGENT_MODEL=$DOUT/best_seen.pth
+export AGENT_MODEL=$DOUT/net_epoch_11.pth
 export EVAL_SPLIT=valid_seen
 python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3
 
@@ -29,7 +29,7 @@ python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA 
 
 # Eval on Validation Unseen
 echo 'Start Validation on Unseen'
-export AGENT_MODEL=$DOUT/best_unseen.pth
+export AGENT_MODEL=$DOUT/net_epoch_19.pth
 export EVAL_SPLIT=valid_unseen
 python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3
 
