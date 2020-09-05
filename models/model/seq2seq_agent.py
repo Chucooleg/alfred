@@ -73,6 +73,8 @@ class Module(nn.Module):
             self.args.data = args.data
         if args.splits != self.args.splits:
             self.args.splits = args.splits
+        if args.fast_epoch != self.args.fast_epoch:
+            self.args.fast_epoch = args.fast_epoch
 
         args = self.args
 
