@@ -1,4 +1,4 @@
-echo 'WIthin Exp 2 Sub Script'
+echo 'WIthin Exp 1 Sub Script'
 
 # Set output Directory
 export MODEL_NAME=experiment_1_original_train_set_plus_all_failures_annotated_by_$AUGMENTATION_LANG_MODEL
