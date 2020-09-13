@@ -16,7 +16,8 @@ export EVAL_SPLITS=$DATA_ROOT/splits/oct21.json
 
 # Eval on Validation Seen
 echo 'Start Validation on Seen'
-export AGENT_MODEL=$DOUT/best_seen.pth
+# export AGENT_MODEL=$DOUT/best_seen.pth
+export AGENT_MODEL=$DOUT/net_epoch_22.pth
 export EVAL_SPLIT=valid_seen
 python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3
 
@@ -27,7 +28,8 @@ python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA 
 
 # Eval on Validation Unseen
 echo 'Start Validation on Unseen'
-export AGENT_MODEL=$DOUT/best_unseen.pth
+# export AGENT_MODEL=$DOUT/best_unseen.pth
+export AGENT_MODEL=$DOUT/net_epoch_12.pth
 export EVAL_SPLIT=valid_unseen
 python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 3
 
