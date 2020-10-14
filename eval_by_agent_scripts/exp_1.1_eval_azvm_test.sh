@@ -18,7 +18,7 @@ export EVAL_SPLITS=$DATA_ROOT/splits/oct21.json
 
 # Eval on Test
 echo 'Start Validation on Test'
-export AGENT_MODEL=$DOUT/net_epoch_23.pth
-ls -l
+# export AGENT_MODEL=$DOUT/net_epoch_23.pth # best seen model
+export AGENT_MODEL=$DOUT/net_epoch_14.pth # best unseen model
 python models/eval/leaderboard.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --model models.model.seq2seq_im_mask --gpu --num_threads 5
 

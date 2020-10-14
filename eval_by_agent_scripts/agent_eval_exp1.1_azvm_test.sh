@@ -20,5 +20,3 @@ echo 'EVAL Exp 1.1 Seen Main Script'
 export AUGMENTATION_LANG_MODEL=explainer
 # eval_script
 bash $SCRIPT_HOME/exp_1.1_eval_azvm_test.sh 
-
-
