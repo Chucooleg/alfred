@@ -99,6 +99,7 @@ if __name__ == '__main__':
         dataset.preprocess_splits(splits)
         vocab = torch.load(os.path.join(args.dout, "%s.vocab" % args.pp_folder))
     else:
+        print("skipping preprocessing.")
         vocab = torch.load(os.path.join(args.data, "%s.vocab" % args.pp_folder))
 
     # load object vocab
