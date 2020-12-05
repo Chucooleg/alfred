@@ -104,7 +104,7 @@ if __name__ == '__main__':
 
     # load object vocab
     if args.object_vocab != 'none':
-        object_vocab = torch.load(os.path.join(args.data, '%s' % args.object_vocab)) 
+        object_vocab = torch.load(os.path.join(args.data, '%s.object_vocab' % args.object_vocab)) 
     else:
         object_vocab = None
 
