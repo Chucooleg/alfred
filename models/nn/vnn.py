@@ -281,6 +281,10 @@ class ActionFrameAttnEncoderPerSubgoal(ActionFrameAttnEncoder):
         # (B, args.dhid*2)
         cont_act = self.enc_att(enc_act)
 
+        # TODO 
+        print("Correct!")
+        import pdb; pdb.set_trace()
+
         # return both compact, per-step representations, (h_n, c_n) for starting next subgoal encoding
         return cont_act, enc_act, curr_subgoal_states
 
@@ -365,6 +369,9 @@ class ActionFrameAttnEncoderPerSubgoalObjAttn(ActionFrameAttnEncoderPerSubgoal):
         
         state_t = last_subgoal_hx
         assert last_subgoal_hx[0].shape == last_subgoal_hx[1].shape == (emb_act.shape[0], self.dhid)
+
+        # TODO 
+        import pdb; pdb.set_trace()
 
         # (B, t, args.dhid)
         enc_act = torch.zeros(emb_act.shape[0], max_t, self.dhid, device=emb_act.device, dtype=torch.float)
@@ -495,6 +502,10 @@ class ActionFrameAttnEncoderPerSubgoalMaxPool(ActionFrameAttnEncoderPerSubgoal):
             obj_embeddings = self.obj_emb(object_indices)
         # (B, t, max_num_objects in batch, dhid)
         obj_embeddings = object_boolean_features.unsqueeze(-1).expand_as(obj_embeddings).mul(obj_embeddings)
+
+        # TODO 
+        import pdb; pdb.set_trace()
+
         # (B, t, dhid)
         return obj_embeddings.max(2)[0]
 
