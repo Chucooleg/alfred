@@ -906,6 +906,10 @@ class LanguageDecoder(nn.Module):
         if self.aux_loss_over_object_states:
             # raise Exception
 
+            # TODO
+            print('using aux loss!')
+            import pdb; pdb.set_trace()
+
             # Max pool hidden state 
             # (B, args.dhid)
             h_enc_max_pooled = torch.max(h_enc_tm1.reshape(h_enc_tm1.shape[0], 2, -1), dim=1)[0]
