@@ -224,7 +224,7 @@ class Module(Base):
             time_report['featurize_input_resnet_features'] += time.time() - start_time
             # -----------loading state features------------------
 
-            if self.encoder_addons != 'none' and self.decoder_addons != 'none':
+            if self.encoder_addons != 'none' or self.decoder_addons != 'none':
 
                 states_root = root.replace('train/', '').replace('valid_seen/', '').replace('valid_unseen/', '')
                 
