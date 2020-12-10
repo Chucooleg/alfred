@@ -186,7 +186,6 @@ class CollectStates(EvalTask):
         states = []
 
         # get symbols and initial object states
-        import pdb; pdb.set_trace()
         event = env.last_event
         obj_symbol_set = set(cls.get_object_symbols_present_in_scene(traj_data))
         receptacle_symbol_set = set(cls.get_receptacle_symbols_present_in_scene(event.metadata))
@@ -233,6 +232,7 @@ class CollectStates(EvalTask):
                 mask = None
 
             # interact with the env
+            import pdb; pdb.set_trace()
             t_success, event, _, err, _ = env.va_interact(action, interact_mask=mask, smooth_nav=args.smooth_nav, debug=args.debug)
             if not t_success:
                 fails += 1
