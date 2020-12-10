@@ -115,7 +115,8 @@ class Eval(object):
         env.step(dict(traj_data['scene']['init_action']))
 
         # print goal instr
-        print("Task: %s" % (traj_data['turk_annotations']['anns'][r_idx]['task_desc']))
+        if traj_data.get('turk_annotations', None):
+            print("Task: %s" % (traj_data['turk_annotations']['anns'][r_idx]['task_desc']))
 
         # setup task for reward
         env.set_task(traj_data, args, reward_type=reward_type)
