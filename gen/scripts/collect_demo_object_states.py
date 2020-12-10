@@ -252,8 +252,7 @@ class CollectStates(EvalTask):
         if goal_satisfied:
             print("Goal Reached")
             success = True
-        import pdb; pdb.set_trace()
-        assert success #TODO NOTE need to turn off for failed trajectories
+        # assert success #TODO need to turn off
 
         # -------------------------------------------------
         # ------debug execution success rate --------------
@@ -275,6 +274,7 @@ class CollectStates(EvalTask):
             log_entry = {'trial': traj_data['task_id'],
                         'type': traj_data['task_type'],
                         'repeat_idx': int(r_idx),
+                        'goal_instr': goal_instr,
                         'completed_goal_conditions': int(pcs[0]),
                         'total_goal_conditions': int(pcs[1]),
                         'goal_condition_success': float(goal_condition_success_rate),
@@ -290,7 +290,7 @@ class CollectStates(EvalTask):
                 fail_log_entries.append(log_entry)
 
             # overall results
-            results['all'] = cls.get_metrics(success_log_entries, fail_log_entries)
+            results['all'] = cls.get_metrics(successes, failures)
 
             logging.info("-------------")
             logging.info("SR: %d/%d = %.3f" % (results['all']['success']['num_successes'],
@@ -308,8 +308,8 @@ class CollectStates(EvalTask):
                         'pick_cool_then_place_in_recep', 'pick_two_obj_and_place', 'look_at_obj_in_light',
                         'pick_and_place_with_movable_recep']
             for task_type in task_types:
-                task_successes = [s for s in (list(success_log_entries)) if s['type'] == task_type]
-                task_failures = [f for f in (list(fail_log_entries)) if f['type'] == task_type]
+                task_successes = [s for s in (list(successes)) if s['type'] == task_type]
+                task_failures = [f for f in (list(failures)) if f['type'] == task_type]
                 if len(task_successes) > 0 or len(task_failures) > 0:
                     results[task_type] = cls.get_metrics(task_successes, task_failures)
                 else:
@@ -331,9 +331,9 @@ class CollectStates(EvalTask):
 
         return states, outpath
 
-def main(args, raw_splits):
+def main(args, splits_to_thread_dict, thread_i=0):
 
-    # raw_splits = splits_to_thread_dict[thread_i]
+    raw_splits = splits_to_thread_dict[thread_i]
 
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -375,7 +375,6 @@ def main(args, raw_splits):
             logger.info(f'Task Root: {traj_data["raw_root"]}.')
             logger.info(f'Task Type: {traj_data["task_type"]}.')
             print(f'\nProcessing {traj_data["raw_root"]}')
-
             try:
                 _, _ = CollectStates.evaluate(args, r_idx, env, split_name, traj_data, planner_full_traj_success, success_log_entries, fail_log_entries, results, logger)
                 print(f'Task succeeds to collect object state.')
@@ -388,11 +387,9 @@ def main(args, raw_splits):
                     print(f"Found a successful traj for split {split_name}. Stopping for this split.")
                     break
             except Exception as e:
-                import pdb; pdb.set_trace()
                 print(e)
                 failed_splits[split_name].append({'task': task["task"]})
                 print(f'Task fails to collect object state.')
-
         print(f'Split {split_name} object states collection results: successes={len(out_splits[split_name])}, fails={len(failed_splits[split_name])}, total={tot_ct[split_name]}')
                                        
     # save success splits
@@ -418,7 +415,7 @@ def main(args, raw_splits):
 
 
 def parallel_main(args):
-    procs = [mp.Process(target=main, args=(args, splits_to_thread_dict, thread_i)) for thread_i in range(args.num_processes)]
+    procs = [mp.Process(target=main, args=(args, splits_to_thread_dict, thread_i)) for thread_i in range(args.num_threads)]
     try:
         for proc in procs:
             proc.start()
@@ -445,6 +442,7 @@ if __name__ == "__main__":
 
     # multi-thread settings
     parser.add_argument("--in_parallel", action='store_true', help="this collection will run in parallel with others, so load from disk on every new sample")
+    parser.add_argument("-n", "--num_threads", type=int, default=0, help="number of processes for parallel mode")
 
     # debug
     parser.add_argument('--debug', dest='debug', action='store_true') # TODO True will give rise to X DISPLAY ERROR
@@ -459,22 +457,19 @@ if __name__ == "__main__":
         raw_splits = json.load(f)
     print(f'Raw Splits are : {raw_splits.keys()}')
 
-    main(parse_args, raw_splits)
+    # do multithreading # TODO use proper queue instead of dividing
+    splits_to_thread_dict = {}
+    if parse_args.in_parallel and parse_args.num_threads > 1:
 
-    # # do multithreading # TODO use proper queue instead of dividing
-    # splits_to_thread_dict = {}
-    # if parse_args.in_parallel and parse_args.num_processes > 1:
+        # divide task among threads
+        quotient = len(raw_splits['augmentation']) // parse_args.num_threads
 
-    #     # divide task among threads
-    #     quotient = len(raw_splits['augmentation']) // parse_args.num_processes
+        for thread_i in range(parse_args.num_threads):
+            splits_to_thread_dict[thread_i] = {'augmentation': raw_splits['augmentation'][thread_i*quotient: (thread_i+1)*quotient]}
+            if thread_i == parse_args.num_threads-1:
+                splits_to_thread_dict[thread_i]['augmentation'] += raw_splits['augmentation'][(thread_i+1)*quotient:]
 
-    #     for thread_i in range(parse_args.num_processes):
-    #         splits_to_thread_dict[thread_i] = {'augmentation': raw_splits['augmentation'][thread_i*quotient: (thread_i+1)*quotient]}
-    #         if thread_i == parse_args.num_processes-1:
-    #             splits_to_thread_dict[thread_i]['augmentation'] += raw_splits['augmentation'][(thread_i+1)*quotient:]
-
-    #     parallel_main(parse_args)
-    # else:
-    #     splits_to_thread_dict[0] = raw_splits
-    #     main(parse_args, splits_to_thread_dict)
-
+        parallel_main(parse_args)
+    else:
+        splits_to_thread_dict[0] = raw_splits
+        main(parse_args, splits_to_thread_dict)
