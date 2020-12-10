@@ -252,7 +252,7 @@ class CollectStates(EvalTask):
         if goal_satisfied:
             print("Goal Reached")
             success = True
-        # assert success #TODO need to turn off
+        assert success #TODO NOTE need to turn off for failed trajectories
 
         # -------------------------------------------------
         # ------debug execution success rate --------------
@@ -274,7 +274,6 @@ class CollectStates(EvalTask):
             log_entry = {'trial': traj_data['task_id'],
                         'type': traj_data['task_type'],
                         'repeat_idx': int(r_idx),
-                        'goal_instr': goal_instr,
                         'completed_goal_conditions': int(pcs[0]),
                         'total_goal_conditions': int(pcs[1]),
                         'goal_condition_success': float(goal_condition_success_rate),
@@ -290,7 +289,7 @@ class CollectStates(EvalTask):
                 fail_log_entries.append(log_entry)
 
             # overall results
-            results['all'] = cls.get_metrics(successes, failures)
+            results['all'] = cls.get_metrics(success_log_entries, fail_log_entries)
 
             logging.info("-------------")
             logging.info("SR: %d/%d = %.3f" % (results['all']['success']['num_successes'],
@@ -308,8 +307,8 @@ class CollectStates(EvalTask):
                         'pick_cool_then_place_in_recep', 'pick_two_obj_and_place', 'look_at_obj_in_light',
                         'pick_and_place_with_movable_recep']
             for task_type in task_types:
-                task_successes = [s for s in (list(successes)) if s['type'] == task_type]
-                task_failures = [f for f in (list(failures)) if f['type'] == task_type]
+                task_successes = [s for s in (list(success_log_entries)) if s['type'] == task_type]
+                task_failures = [f for f in (list(fail_log_entries)) if f['type'] == task_type]
                 if len(task_successes) > 0 or len(task_failures) > 0:
                     results[task_type] = cls.get_metrics(task_successes, task_failures)
                 else:
@@ -442,7 +441,7 @@ if __name__ == "__main__":
 
     # multi-thread settings
     parser.add_argument("--in_parallel", action='store_true', help="this collection will run in parallel with others, so load from disk on every new sample")
-    parser.add_argument("-n", "--num_threads", type=int, default=0, help="number of processes for parallel mode")
+    parser.add_argument("-n", "--num_processes", type=int, default=0, help="number of processes for parallel mode")
 
     # debug
     parser.add_argument('--debug', dest='debug', action='store_true') # TODO True will give rise to X DISPLAY ERROR
