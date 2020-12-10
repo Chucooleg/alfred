@@ -331,6 +331,7 @@ class CollectStates(EvalTask):
         return states, outpath
 
 def main(args, splits_to_thread_dict, thread_i=0):
+    print('inside main')
 
     raw_splits = splits_to_thread_dict[thread_i]
 
@@ -414,7 +415,6 @@ def main(args, splits_to_thread_dict, thread_i=0):
 
 
 def parallel_main(args):
-    print('inside parallel main')
     procs = [mp.Process(target=main, args=(args, splits_to_thread_dict, thread_i)) for thread_i in range(args.num_threads)]
     try:
         for proc in procs:
