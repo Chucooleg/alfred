@@ -232,7 +232,6 @@ class CollectStates(EvalTask):
                 mask = None
 
             # interact with the env
-            import pdb; pdb.set_trace()
             t_success, event, _, err, _ = env.va_interact(action, interact_mask=mask, smooth_nav=args.smooth_nav, debug=args.debug)
             if not t_success:
                 fails += 1
@@ -245,6 +244,7 @@ class CollectStates(EvalTask):
             reward += t_reward
             t += 1
         
+        import pdb; pdb.set_trace()
         # make sure we have used all masks
         assert interact_ct == sum(groundtruth_valid_interacts)
         
