@@ -414,7 +414,7 @@ def main(args, splits_to_thread_dict, thread_i=0):
 
 
 def parallel_main(args):
-    procs = [mp.Process(target=main, args=(args, splits_to_thread_dict, thread_i)) for thread_i in range(args.num_threads)]
+    procs = [mp.Process(target=main, args=(args, splits_to_thread_dict, thread_i)) for thread_i in range(args.num_processes)]
     try:
         for proc in procs:
             proc.start()
@@ -458,14 +458,14 @@ if __name__ == "__main__":
 
     # do multithreading # TODO use proper queue instead of dividing
     splits_to_thread_dict = {}
-    if parse_args.in_parallel and parse_args.num_threads > 1:
+    if parse_args.in_parallel and parse_args.num_processes > 1:
 
         # divide task among threads
-        quotient = len(raw_splits['augmentation']) // parse_args.num_threads
+        quotient = len(raw_splits['augmentation']) // parse_args.num_processes
 
-        for thread_i in range(parse_args.num_threads):
+        for thread_i in range(parse_args.num_processes):
             splits_to_thread_dict[thread_i] = {'augmentation': raw_splits['augmentation'][thread_i*quotient: (thread_i+1)*quotient]}
-            if thread_i == parse_args.num_threads-1:
+            if thread_i == parse_args.num_processes-1:
                 splits_to_thread_dict[thread_i]['augmentation'] += raw_splits['augmentation'][(thread_i+1)*quotient:]
 
         parallel_main(parse_args)
