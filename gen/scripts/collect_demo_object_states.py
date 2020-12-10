@@ -418,7 +418,9 @@ def parallel_main(args):
     procs = [mp.Process(target=main, args=(args, splits_to_thread_dict, thread_i)) for thread_i in range(args.num_threads)]
     try:
         for proc in procs:
+            print('BEFORE PROC START')
             proc.start()
+            print('AFTER PROC START')
             time.sleep(0.1)
     finally:
         for proc in procs:
