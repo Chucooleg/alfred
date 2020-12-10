@@ -119,6 +119,7 @@ class ThorEnv(Controller):
         '''
         set the current task type (one of 7 tasks)
         '''
+        import pdb; pdb.set_trace()
         task_type = traj['task_type']
         self.task = get_task(task_type, traj, self, args, reward_type=reward_type, max_episode_length=max_episode_length)
 
