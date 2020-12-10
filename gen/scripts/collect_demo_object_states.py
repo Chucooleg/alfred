@@ -199,6 +199,7 @@ class CollectStates(EvalTask):
         action, mask = None, None
         interact_ct = 0
         high_idx = -1
+        step = 0 
         while not done:            
             # if last action was stop, break
             if action == cls.STOP_TOKEN:
@@ -232,6 +233,8 @@ class CollectStates(EvalTask):
                 mask = None
 
             # interact with the env
+            step += 1
+            import pdb; pdb.set_trace()
             t_success, event, _, err, _ = env.va_interact(action, interact_mask=mask, smooth_nav=args.smooth_nav, debug=args.debug)
             if not t_success:
                 fails += 1
