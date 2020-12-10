@@ -375,22 +375,37 @@ def main(args, raw_splits):
             logger.info(f'Task Root: {traj_data["raw_root"]}.')
             logger.info(f'Task Type: {traj_data["task_type"]}.')
             print(f'\nProcessing {traj_data["raw_root"]}')
-            try:
-                _, _ = CollectStates.evaluate(args, r_idx, env, split_name, traj_data, planner_full_traj_success, success_log_entries, fail_log_entries, results, logger)
-                print(f'Task succeeds to collect object state.')
-                out_splits[split_name].append({
-                    'task': task["task"], 
-                    'repeat_idx':task['repeat_idx'], 
-                    'full_traj_success':task['full_traj_success'],
-                    'collected_subgoals':task['collected_subgoals']}) # '<goal type>/<task_id>'
-                if args.first_task_only:
-                    print(f"Found a successful traj for split {split_name}. Stopping for this split.")
-                    break
-            except Exception as e:
-                import pdb; pdb.set_trace()
-                print(e)
-                failed_splits[split_name].append({'task': task["task"]})
-                print(f'Task fails to collect object state.')
+
+
+
+            _, _ = CollectStates.evaluate(args, r_idx, env, split_name, traj_data, planner_full_traj_success, success_log_entries, fail_log_entries, results, logger)
+            print(f'Task succeeds to collect object state.')
+            out_splits[split_name].append({
+                'task': task["task"], 
+                'repeat_idx':task['repeat_idx'], 
+                'full_traj_success':task['full_traj_success'],
+                'collected_subgoals':task['collected_subgoals']}) # '<goal type>/<task_id>'
+            if args.first_task_only:
+                print(f"Found a successful traj for split {split_name}. Stopping for this split.")
+                break
+
+
+            # try:
+            #     _, _ = CollectStates.evaluate(args, r_idx, env, split_name, traj_data, planner_full_traj_success, success_log_entries, fail_log_entries, results, logger)
+            #     print(f'Task succeeds to collect object state.')
+            #     out_splits[split_name].append({
+            #         'task': task["task"], 
+            #         'repeat_idx':task['repeat_idx'], 
+            #         'full_traj_success':task['full_traj_success'],
+            #         'collected_subgoals':task['collected_subgoals']}) # '<goal type>/<task_id>'
+            #     if args.first_task_only:
+            #         print(f"Found a successful traj for split {split_name}. Stopping for this split.")
+            #         break
+            # except Exception as e:
+            #     import pdb; pdb.set_trace()
+            #     print(e)
+            #     failed_splits[split_name].append({'task': task["task"]})
+            #     print(f'Task fails to collect object state.')
         print(f'Split {split_name} object states collection results: successes={len(out_splits[split_name])}, fails={len(failed_splits[split_name])}, total={tot_ct[split_name]}')
                                        
     # save success splits
