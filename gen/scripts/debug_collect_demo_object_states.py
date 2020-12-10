@@ -56,6 +56,26 @@ parse_args.reward_config = os.path.join(os.environ['ALFRED_ROOT'], parse_args.re
 parse_args.PLANNER_TIME_STAMP = '20201210'
 
 
+def load_task_json(args, task):
+    '''
+    load preprocessed json from disk
+    ''' 
+    # e.g. /root/data_alfred/demo_generated/new_trajectories_debug_sampler_20200611/pick_two_obj_and_place-Watch-None-Dresser-205/trial_T20200611_235502_613792/traj_data.json
+    json_path = os.path.join(args.data, task['task'], 'traj_data.json')
+
+    with open(json_path) as f:
+        data = json.load(f)
+    return data
+
+def decompress_mask(compressed_mask):
+    '''
+    decompress mask from json files
+    '''
+    mask = np.array(util_decompress_mask(compressed_mask))
+    mask = np.expand_dims(mask, axis=0)
+    return mask
+
+
 class CollectStates(EvalTask):
 
     object_state_list = ['isToggled', 'isBroken', 'isFilledWithLiquid', 'isDirty',
