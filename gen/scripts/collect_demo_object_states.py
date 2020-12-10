@@ -474,5 +474,5 @@ if __name__ == "__main__":
         parallel_main(parse_args)
     else:
         splits_to_thread_dict[0] = raw_splits
-        print('CALLING MAIN')
+        import pdb; pdb.set_trace()
         main(parse_args, splits_to_thread_dict)
