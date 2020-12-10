@@ -252,6 +252,7 @@ class CollectStates(EvalTask):
         if goal_satisfied:
             print("Goal Reached")
             success = True
+        import pdb; pdb.set_trace()
         assert success #TODO NOTE need to turn off for failed trajectories
 
         # -------------------------------------------------
@@ -330,9 +331,9 @@ class CollectStates(EvalTask):
 
         return states, outpath
 
-def main(args, splits_to_thread_dict, thread_i=0):
+def main(args, raw_splits):
 
-    raw_splits = splits_to_thread_dict[thread_i]
+    # raw_splits = splits_to_thread_dict[thread_i]
 
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -386,6 +387,7 @@ def main(args, splits_to_thread_dict, thread_i=0):
                     print(f"Found a successful traj for split {split_name}. Stopping for this split.")
                     break
             except Exception as e:
+                import pdb; pdb.set_trace()
                 print(e)
                 failed_splits[split_name].append({'task': task["task"]})
                 print(f'Task fails to collect object state.')
@@ -441,7 +443,6 @@ if __name__ == "__main__":
 
     # multi-thread settings
     parser.add_argument("--in_parallel", action='store_true', help="this collection will run in parallel with others, so load from disk on every new sample")
-    parser.add_argument("-n", "--num_processes", type=int, default=0, help="number of processes for parallel mode")
 
     # debug
     parser.add_argument('--debug', dest='debug', action='store_true') # TODO True will give rise to X DISPLAY ERROR
@@ -456,20 +457,22 @@ if __name__ == "__main__":
         raw_splits = json.load(f)
     print(f'Raw Splits are : {raw_splits.keys()}')
 
-    # do multithreading # TODO use proper queue instead of dividing
-    splits_to_thread_dict = {}
-    if parse_args.in_parallel and parse_args.num_processes > 1:
+    main(parse_args, raw_splits)
 
-        # divide task among threads
-        quotient = len(raw_splits['augmentation']) // parse_args.num_processes
+    # # do multithreading # TODO use proper queue instead of dividing
+    # splits_to_thread_dict = {}
+    # if parse_args.in_parallel and parse_args.num_processes > 1:
 
-        for thread_i in range(parse_args.num_processes):
-            splits_to_thread_dict[thread_i] = {'augmentation': raw_splits['augmentation'][thread_i*quotient: (thread_i+1)*quotient]}
-            if thread_i == parse_args.num_processes-1:
-                splits_to_thread_dict[thread_i]['augmentation'] += raw_splits['augmentation'][(thread_i+1)*quotient:]
+    #     # divide task among threads
+    #     quotient = len(raw_splits['augmentation']) // parse_args.num_processes
 
-        parallel_main(parse_args)
-    else:
-        splits_to_thread_dict[0] = raw_splits
-        main(parse_args, splits_to_thread_dict)
+    #     for thread_i in range(parse_args.num_processes):
+    #         splits_to_thread_dict[thread_i] = {'augmentation': raw_splits['augmentation'][thread_i*quotient: (thread_i+1)*quotient]}
+    #         if thread_i == parse_args.num_processes-1:
+    #             splits_to_thread_dict[thread_i]['augmentation'] += raw_splits['augmentation'][(thread_i+1)*quotient:]
+
+    #     parallel_main(parse_args)
+    # else:
+    #     splits_to_thread_dict[0] = raw_splits
+    #     main(parse_args, splits_to_thread_dict)
 
