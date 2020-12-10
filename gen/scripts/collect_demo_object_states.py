@@ -331,7 +331,7 @@ class CollectStates(EvalTask):
         return states, outpath
 
 def main(args, splits_to_thread_dict, thread_i=0):
-    print('INSIDE MAIN')
+    import pdb; pdb.set_trace()
 
     raw_splits = splits_to_thread_dict[thread_i]
 
@@ -474,5 +474,4 @@ if __name__ == "__main__":
         parallel_main(parse_args)
     else:
         splits_to_thread_dict[0] = raw_splits
-        import pdb; pdb.set_trace()
         main(parse_args, splits_to_thread_dict)
