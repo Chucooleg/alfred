@@ -15,6 +15,7 @@ from gen.utils.image_util import decompress_mask as util_decompress_mask
 import gen.constants as constants
 
 import re
+import random
 import numpy as np
 from PIL import Image
 from datetime import datetime
@@ -234,7 +235,7 @@ class CollectStates(EvalTask):
 
             # interact with the env
             stp += 1
-            t_success, event, _, err, _ = env.va_interact(action, interact_mask=mask, smooth_nav=args.smooth_nav, debug=args.debug)
+            t_success, event, _, err, _ = env.va_interact(action, interact_mask=mask, smooth_nav=args.smooth_nav, debug=False)
             if not t_success:
                 fails += 1
                 if fails >= args.max_fails:
@@ -258,63 +259,63 @@ class CollectStates(EvalTask):
 
         # -------------------------------------------------
         # ------debug execution success rate --------------
-        if args.debug:
+        # if args.debug:
 
-            # goal_conditions
-            pcs = env.get_goal_conditions_met()
-            goal_condition_success_rate = pcs[0] / float(pcs[1])
+        #     # goal_conditions
+        #     pcs = env.get_goal_conditions_met()
+        #     goal_condition_success_rate = pcs[0] / float(pcs[1])
 
-            # SPL
-            path_len_weight = len(traj_data['plan']['low_actions'])
-            s_spl = (1 if goal_satisfied else 0) * min(1., path_len_weight / float(t))
-            pc_spl = goal_condition_success_rate * min(1., path_len_weight / float(t))
+        #     # SPL
+        #     path_len_weight = len(traj_data['plan']['low_actions'])
+        #     s_spl = (1 if goal_satisfied else 0) * min(1., path_len_weight / float(t))
+        #     pc_spl = goal_condition_success_rate * min(1., path_len_weight / float(t))
 
-            # path length weighted SPL
-            plw_s_spl = s_spl * path_len_weight
-            plw_pc_spl = pc_spl * path_len_weight
+        #     # path length weighted SPL
+        #     plw_s_spl = s_spl * path_len_weight
+        #     plw_pc_spl = pc_spl * path_len_weight
 
-            log_entry = {'trial': traj_data['task_id'],
-                        'type': traj_data['task_type'],
-                        'repeat_idx': int(r_idx),
-                        'completed_goal_conditions': int(pcs[0]),
-                        'total_goal_conditions': int(pcs[1]),
-                        'goal_condition_success': float(goal_condition_success_rate),
-                        'success_spl': float(s_spl),
-                        'path_len_weighted_success_spl': float(plw_s_spl),
-                        'goal_condition_spl': float(pc_spl),
-                        'path_len_weighted_goal_condition_spl': float(plw_pc_spl),
-                        'path_len_weight': int(path_len_weight),
-                        'reward': float(reward)}
-            if success:
-                success_log_entries.append(log_entry)
-            else:
-                fail_log_entries.append(log_entry)
+        #     log_entry = {'trial': traj_data['task_id'],
+        #                 'type': traj_data['task_type'],
+        #                 'repeat_idx': int(r_idx),
+        #                 'completed_goal_conditions': int(pcs[0]),
+        #                 'total_goal_conditions': int(pcs[1]),
+        #                 'goal_condition_success': float(goal_condition_success_rate),
+        #                 'success_spl': float(s_spl),
+        #                 'path_len_weighted_success_spl': float(plw_s_spl),
+        #                 'goal_condition_spl': float(pc_spl),
+        #                 'path_len_weighted_goal_condition_spl': float(plw_pc_spl),
+        #                 'path_len_weight': int(path_len_weight),
+        #                 'reward': float(reward)}
+        #     if success:
+        #         success_log_entries.append(log_entry)
+        #     else:
+        #         fail_log_entries.append(log_entry)
 
-            # overall results
-            results['all'] = cls.get_metrics(success_log_entries, fail_log_entries)
+        #     # overall results
+        #     results['all'] = cls.get_metrics(success_log_entries, fail_log_entries)
 
-            logging.info("-------------")
-            logging.info("SR: %d/%d = %.3f" % (results['all']['success']['num_successes'],
-                                        results['all']['success']['num_evals'],
-                                        results['all']['success']['success_rate']))
-            logging.info("GC: %d/%d = %.3f" % (results['all']['goal_condition_success']['completed_goal_conditions'],
-                                        results['all']['goal_condition_success']['total_goal_conditions'],
-                                        results['all']['goal_condition_success']['goal_condition_success_rate']))
-            logging.info("PLW SR: %.3f" % (results['all']['path_length_weighted_success_rate']))
-            logging.info("PLW GC: %.3f" % (results['all']['path_length_weighted_goal_condition_success_rate']))
-            logging.info("-------------")
+        #     logging.info("-------------")
+        #     logging.info("SR: %d/%d = %.3f" % (results['all']['success']['num_successes'],
+        #                                 results['all']['success']['num_evals'],
+        #                                 results['all']['success']['success_rate']))
+        #     logging.info("GC: %d/%d = %.3f" % (results['all']['goal_condition_success']['completed_goal_conditions'],
+        #                                 results['all']['goal_condition_success']['total_goal_conditions'],
+        #                                 results['all']['goal_condition_success']['goal_condition_success_rate']))
+        #     logging.info("PLW SR: %.3f" % (results['all']['path_length_weighted_success_rate']))
+        #     logging.info("PLW GC: %.3f" % (results['all']['path_length_weighted_goal_condition_success_rate']))
+        #     logging.info("-------------")
 
-            # task type specific results
-            task_types = ['pick_and_place_simple', 'pick_clean_then_place_in_recep', 'pick_heat_then_place_in_recep',
-                        'pick_cool_then_place_in_recep', 'pick_two_obj_and_place', 'look_at_obj_in_light',
-                        'pick_and_place_with_movable_recep']
-            for task_type in task_types:
-                task_successes = [s for s in (list(success_log_entries)) if s['type'] == task_type]
-                task_failures = [f for f in (list(fail_log_entries)) if f['type'] == task_type]
-                if len(task_successes) > 0 or len(task_failures) > 0:
-                    results[task_type] = cls.get_metrics(task_successes, task_failures)
-                else:
-                    results[task_type] = {}            
+        #     # task type specific results
+        #     task_types = ['pick_and_place_simple', 'pick_clean_then_place_in_recep', 'pick_heat_then_place_in_recep',
+        #                 'pick_cool_then_place_in_recep', 'pick_two_obj_and_place', 'look_at_obj_in_light',
+        #                 'pick_and_place_with_movable_recep']
+        #     for task_type in task_types:
+        #         task_successes = [s for s in (list(success_log_entries)) if s['type'] == task_type]
+        #         task_failures = [f for f in (list(fail_log_entries)) if f['type'] == task_type]
+        #         if len(task_successes) > 0 or len(task_failures) > 0:
+        #             results[task_type] = cls.get_metrics(task_successes, task_failures)
+        #         else:
+        #             results[task_type] = {}            
 
         # -------------------------------------------------
         # if the planner did not achieve full success, 
@@ -383,7 +384,8 @@ def main(args, splits_to_thread_dict, thread_i=0):
                     'task': task["task"], 
                     'repeat_idx':task['repeat_idx'], 
                     'full_traj_success':task['full_traj_success'],
-                    'collected_subgoals':task['collected_subgoals']}) # '<goal type>/<task_id>'
+                    'collected_subgoals': len(traj_data['plan']['high_pddl']) # including 'NoOp'
+                    }) # '<goal type>/<task_id>'
                 if args.first_task_only:
                     print(f"Found a successful traj for split {split_name}. Stopping for this split.")
                     break
@@ -399,29 +401,24 @@ def main(args, splits_to_thread_dict, thread_i=0):
     # demo_june13_raw.json
     split_file_name = args.raw_splits.split('/')[-1] 
     # /root/data_alfred/splits/demo_june13.json
-    out_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', '.json'))
+    out_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', f'_thread{thread_i}.json'))
     with open(out_splits_path, 'w') as f:
         json.dump(out_splits, f)
     print(f'New split file for successful trajectories is saved to {out_splits_path}')
 
-    # save failed splits if debugging
-    if args.debug:
-        # save failed splits
-        # /root/data_alfred/splits/demo_june13_failed.json
-        # TODO need to merge results from threads!
-        failed_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', '_failed.json'))
-        with open(failed_splits_path, 'w') as f:
-            json.dump(failed_splits, f)
-        print(f'New split file for failed trajectories is saved to {failed_splits_path}')
+    # save failed splits
+    # /root/data_alfred/splits/demo_june13_failed.json
+    failed_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', f'__thread{thread_i}_failed.json'))
+    with open(failed_splits_path, 'w') as f:
+        json.dump(failed_splits, f)
+    print(f'New split file for failed trajectories is saved to {failed_splits_path}')
 
 
 def parallel_main(args):
     procs = [mp.Process(target=main, args=(args, splits_to_thread_dict, thread_i)) for thread_i in range(args.num_threads)]
     try:
         for proc in procs:
-            print('BEFORE PROC START')
             proc.start()
-            print('AFTER PROC START')
             time.sleep(0.1)
     finally:
         for proc in procs:
@@ -448,12 +445,12 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--num_threads", type=int, default=0, help="number of processes for parallel mode")
 
     # debug
-    parser.add_argument('--debug', dest='debug', action='store_true') # TODO True will give rise to X DISPLAY ERROR
+    # parser.add_argument('--debug', dest='debug', action='store_true') # TODO True will give rise to X DISPLAY ERROR
     parse_args = parser.parse_args()
 
     parse_args.reward_config = os.path.join(os.environ['ALFRED_ROOT'], parse_args.reward_config)
     # parse_args.PLANNER_TIME_STAMP = re.findall('new_trajectories_T(.*)/', parse_args.data)[0]
-    parse_args.PLANNER_TIME_STAMP = '20200823'
+    parse_args.PLANNER_TIME_STAMP = '20201213'
 
     # load splits
     with open(parse_args.raw_splits) as f:
@@ -463,6 +460,8 @@ if __name__ == "__main__":
     # do multithreading # TODO use proper queue instead of dividing
     splits_to_thread_dict = {}
     if parse_args.in_parallel and parse_args.num_threads > 1:
+
+        random.shuffle(raw_splits['augmentation'])
 
         # divide task among threads
         quotient = len(raw_splits['augmentation']) // parse_args.num_threads

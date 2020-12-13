@@ -15,8 +15,8 @@ import threading
 import time
 import copy
 import random
-from utils.video_util import VideoSaver
-from utils.py_util import walklevel
+from gen.utils.video_util import VideoSaver
+from gen.utils.py_util import walklevel
 from env.thor_env import ThorEnv
 
 
@@ -38,7 +38,6 @@ render_settings['renderObjectImage'] = True
 render_settings['renderClassImage'] = True
 
 video_saver = VideoSaver()
-
 
 def get_image_index(save_path):
     return len(glob.glob(save_path + '/*.png'))
