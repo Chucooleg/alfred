@@ -233,12 +233,9 @@ class CollectStates(EvalTask):
                 mask = None
 
             # interact with the env
-<<<<<<< HEAD
             stp += 1
             t_success, event, _, err, _ = env.va_interact(action, interact_mask=mask, smooth_nav=args.smooth_nav, debug=False)
-=======
-            t_success, event, _, err, _ = env.va_interact(action, interact_mask=mask, smooth_nav=args.smooth_nav, debug=args.debug)
->>>>>>> a9d4308071bc2fd29e7cb36365f3bf8844e78645
+
             if not t_success:
                 fails += 1
                 if fails >= args.max_fails:
@@ -262,7 +259,6 @@ class CollectStates(EvalTask):
 
         # -------------------------------------------------
         # ------debug execution success rate --------------
-<<<<<<< HEAD
         # if args.debug:
 
         #     # goal_conditions
@@ -320,67 +316,6 @@ class CollectStates(EvalTask):
         #             results[task_type] = cls.get_metrics(task_successes, task_failures)
         #         else:
         #             results[task_type] = {}            
-=======
-        if args.debug:
-
-            # goal_conditions
-            pcs = env.get_goal_conditions_met()
-            goal_condition_success_rate = pcs[0] / float(pcs[1])
-
-            # SPL
-            path_len_weight = len(traj_data['plan']['low_actions'])
-            s_spl = (1 if goal_satisfied else 0) * min(1., path_len_weight / float(t))
-            pc_spl = goal_condition_success_rate * min(1., path_len_weight / float(t))
-
-            # path length weighted SPL
-            plw_s_spl = s_spl * path_len_weight
-            plw_pc_spl = pc_spl * path_len_weight
-
-            log_entry = {'trial': traj_data['task_id'],
-                        'type': traj_data['task_type'],
-                        'repeat_idx': int(r_idx),
-                        'goal_instr': goal_instr,
-                        'completed_goal_conditions': int(pcs[0]),
-                        'total_goal_conditions': int(pcs[1]),
-                        'goal_condition_success': float(goal_condition_success_rate),
-                        'success_spl': float(s_spl),
-                        'path_len_weighted_success_spl': float(plw_s_spl),
-                        'goal_condition_spl': float(pc_spl),
-                        'path_len_weighted_goal_condition_spl': float(plw_pc_spl),
-                        'path_len_weight': int(path_len_weight),
-                        'reward': float(reward)}
-            if success:
-                success_log_entries.append(log_entry)
-            else:
-                fail_log_entries.append(log_entry)
-
-            # overall results
-            results['all'] = cls.get_metrics(successes, failures)
-
-            logging.info("-------------")
-            logging.info("SR: %d/%d = %.3f" % (results['all']['success']['num_successes'],
-                                        results['all']['success']['num_evals'],
-                                        results['all']['success']['success_rate']))
-            logging.info("GC: %d/%d = %.3f" % (results['all']['goal_condition_success']['completed_goal_conditions'],
-                                        results['all']['goal_condition_success']['total_goal_conditions'],
-                                        results['all']['goal_condition_success']['goal_condition_success_rate']))
-            logging.info("PLW SR: %.3f" % (results['all']['path_length_weighted_success_rate']))
-            logging.info("PLW GC: %.3f" % (results['all']['path_length_weighted_goal_condition_success_rate']))
-            logging.info("-------------")
-
-            # task type specific results
-            task_types = ['pick_and_place_simple', 'pick_clean_then_place_in_recep', 'pick_heat_then_place_in_recep',
-                        'pick_cool_then_place_in_recep', 'pick_two_obj_and_place', 'look_at_obj_in_light',
-                        'pick_and_place_with_movable_recep']
-            for task_type in task_types:
-                task_successes = [s for s in (list(successes)) if s['type'] == task_type]
-                task_failures = [f for f in (list(failures)) if f['type'] == task_type]
-                if len(task_successes) > 0 or len(task_failures) > 0:
-                    results[task_type] = cls.get_metrics(task_successes, task_failures)
-                else:
-                    results[task_type] = {}            
->>>>>>> a9d4308071bc2fd29e7cb36365f3bf8844e78645
-
         # -------------------------------------------------
         # if the planner did not achieve full success, 
         # we need to remove the last collected state because the last action was not cls.STOP_TOKEN
