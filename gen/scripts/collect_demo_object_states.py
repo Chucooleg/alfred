@@ -407,7 +407,7 @@ def main(args, splits_to_thread_dict, thread_i=0):
 
     # save failed splits
     # /root/data_alfred/splits/demo_june13_failed.json
-    failed_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', f'__thread{thread_i}_failed.json'))
+    failed_splits_path = os.path.join(split_file_dir, split_file_name.replace('_raw.json', f'_thread{thread_i}_failed.json'))
     with open(failed_splits_path, 'w') as f:
         json.dump(failed_splits, f)
     print(f'New split file for failed trajectories is saved to {failed_splits_path}')
