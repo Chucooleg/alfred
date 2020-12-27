@@ -1,11 +1,11 @@
+import os
 import sys
 sys.path.append(os.path.join(os.environ['ALFRED_ROOT'], 'gen'))
 
 import numpy as np
 import constants
 
-import os
-os.environ['ALFRED_ROOT'] = '/root/data/home/hoyeung/alfred/'
+os.environ['ALFRED_ROOT'] = '/root/home/hoyeung/alfred/'
 
 
 def bbox_to_mask(bbox):

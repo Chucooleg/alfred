@@ -43,7 +43,7 @@ class Dataset(object):
         return vocab.word2index(words, train=train)
 
 
-    def preprocess_splits(self, splits, preprocess_lang=True, train_vocab=True, save_vocab_to_dout=True, demo_mode=False):
+    def preprocess_splits(self, splits, preprocess_lang=True, train_vocab=True, save_vocab_to_dout=True, augmentation_mode=False):
         '''
         saves preprocessed data as jsons in specified folder
         splits : dict read from <data path>/splits/*.json files
@@ -58,10 +58,12 @@ class Dataset(object):
             if self.args.fast_epoch:
                 d = d[:16]
 
+            print(d)
+
             for task in progressbar.progressbar(d):
                 
                 # load json file
-                json_path = os.path.join(self.args.data, '' if demo_mode else k, task['task'], 'traj_data.json')
+                json_path = os.path.join(self.args.data, '' if augmentation_mode else k, task['task'], 'traj_data.json')
                 with open(json_path) as f:
                     ex = json.load(f)
 
@@ -77,7 +79,7 @@ class Dataset(object):
 
                 # numericalize language
                 if preprocess_lang:
-                    self.process_language(ex, traj, r_idx, train=train_vocab, demo_mode=demo_mode)
+                    self.process_language(ex, traj, r_idx, train=train_vocab)
 
                 # numericalize actions for train/valid splits
                 if 'test' not in k: # expert actions are not available for the test set
@@ -88,11 +90,14 @@ class Dataset(object):
                 if not os.path.isdir(preprocessed_folder):
                     os.makedirs(preprocessed_folder)               
 
+                # # save preprocessed json
+                # if demo_mode:
+                #     preprocessed_json_path = os.path.join(preprocessed_folder, "demo_%d.json" % r_idx) # HACKY
+                # else:
+                #     preprocessed_json_path = os.path.join(preprocessed_folder, "ann_%d.json" % r_idx)
+                
                 # save preprocessed json
-                if demo_mode:
-                    preprocessed_json_path = os.path.join(preprocessed_folder, "demo_%d.json" % r_idx) # HACKY
-                else:
-                    preprocessed_json_path = os.path.join(preprocessed_folder, "ann_%d.json" % r_idx)
+                preprocessed_json_path = os.path.join(preprocessed_folder, "ann_%d.json" % r_idx)
                 with open(preprocessed_json_path, 'w') as f:
                     json.dump(traj, f, sort_keys=True, indent=4)
 

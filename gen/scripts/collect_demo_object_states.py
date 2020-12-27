@@ -200,6 +200,7 @@ class CollectStates(EvalTask):
         action, mask = None, None
         interact_ct = 0
         high_idx = -1
+        stp = 0
         while not done:            
             # if last action was stop, break
             if action == cls.STOP_TOKEN:

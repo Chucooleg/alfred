@@ -92,7 +92,7 @@ python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $
 python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $SPLITS --low_level_explainer_checkpt_path $BASELINE --high_level_explainer_checkpt_path $GOAL_EXPLAINER --gpu --baseline
 
 
-python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $SPLI
+python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $SPLITS
 TS --low_level_explainer_checkpt_path $EXPLAINER --high_level_explainer_checkpt_path $GOAL_EXPLAINER --gpu --fast_epoch
 
 
