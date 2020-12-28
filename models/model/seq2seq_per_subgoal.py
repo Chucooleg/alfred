@@ -228,7 +228,8 @@ class Module(Base):
 
                 states_root = root.replace('train/', '').replace('valid_seen/', '').replace('valid_unseen/', '')
                 
-                with open(os.path.join(states_root, '{}/extracted_feature_states.json'.format(self.pp_folder)), 'r') as f:
+                # with open(os.path.join(states_root, '{}/extracted_feature_states.json'.format(self.pp_folder)), 'r') as f:
+                with open(os.path.join(states_root, 'extracted_feature_states.json'), 'r') as f:
                     obj_states = json.load(f)
 
                 for subgoal_i in range(num_subgoals):
@@ -342,7 +343,10 @@ class Module(Base):
                             # shape (t, max_num_objects)
                             object_tensor = torch.ones(len(v[subgoal_i][batch_i]), max_num_objects, device=device, dtype=torch.long if ('token_id' in k) else torch.float) * self.pad
                             # fill shape shape (t, <=max_num_objects)
-                            object_tensor[:, :len(v[subgoal_i][batch_i][0])] = torch.tensor(v[subgoal_i][batch_i])
+                            try:
+                                object_tensor[:, :len(v[subgoal_i][batch_i][0])] = torch.tensor(v[subgoal_i][batch_i])
+                            except:
+                                import pdb; pdb.set_trace()
                             seqs.append(object_tensor)
                     # each tensor shape (B, t, max_num_objects) with t = max(l)
                     all_pad_seqs.append(pad_sequence(seqs, batch_first=True, padding_value=self.pad))

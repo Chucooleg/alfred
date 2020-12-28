@@ -21,7 +21,7 @@ def make_overrride_args(args, level='low'):
     assert level in ['low', 'high']
     new_args = {arg:getattr(args, arg) for arg in vars(args)}
     # use new pp folder: pp_model:.....,name:.....
-    new_args['pp_folder'] = 'pp_{}'.format(re.findall('(model:.*,name.*)/', new_args[f'{level}_level_explainer_checkpt_path'])[0])
+    new_args['pp_folder'] = 'pp_{}'.format(re.findall('(model[:_].*,name.*)/', new_args[f'{level}_level_explainer_checkpt_path'])[0])
     return new_args
 
 def load_task_json(model, task):
@@ -68,7 +68,7 @@ def validate_vocab(args, model, level='low'):
         return
     else:
         # load vocab from data
-        pp_suffix = re.findall('(model:.*,name.*)/', args.low_level_explainer_checkpt_path if level=='low' else args.high_level_explainer_checkpt_path)[0]
+        pp_suffix = re.findall('(model[:_].*,name.*)/', args.low_level_explainer_checkpt_path if level=='low' else args.high_level_explainer_checkpt_path)[0]
         data_vocab_path = os.path.join(args.data, f'pp_{pp_suffix}.vocab')
         assert os.path.exists(data_vocab_path), 'data vocab path does not exist, cannot pass sanity check'
         assert torch.load(data_vocab_path) == model.vocab, 'data vocab and model vocab do not match, cannot pass sanity check'
@@ -207,8 +207,8 @@ if __name__ == '__main__':
 
     # make output dir for predictions
     # e.g. model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce_1to2
-    low_mod_name = re.findall('(model:.*,name.*)/', args.low_level_explainer_checkpt_path)[0]
-    high_mod_name = re.findall('(model:.*,name.*)/', args.high_level_explainer_checkpt_path)[0] if args.high_level_explainer_checkpt_path != 'None' else 'None'
+    low_mod_name = re.findall('(model[:_].*,name.*)/', args.low_level_explainer_checkpt_path)[0]
+    high_mod_name = re.findall('(model[:_].*,name.*)/', args.high_level_explainer_checkpt_path)[0] if args.high_level_explainer_checkpt_path != 'None' else 'None'
     args.dout = os.path.join(args.data, f'dout_explainer_low_{low_mod_name}_high_{high_mod_name}')
     if not os.path.isdir(args.dout):
         print (f'Output directory: {args.dout}')
@@ -216,8 +216,8 @@ if __name__ == '__main__':
 
     # load models modules
     # e.g. seq2seq_per_subgoal
-    low_module = re.findall('model:(.*),name:', args.low_level_explainer_checkpt_path)[0]
-    high_module = re.findall('model:(.*),name:', args.high_level_explainer_checkpt_path)[0] if args.high_level_explainer_checkpt_path != 'None' else 'None'
+    low_module = re.findall('model[:_](.*),name[:_]', args.low_level_explainer_checkpt_path)[0]
+    high_module = re.findall('model[:_](.*),name[:_]', args.high_level_explainer_checkpt_path)[0] if args.high_level_explainer_checkpt_path != 'None' else 'None'
 
     # load low-level model
     print(f'Loading low-level Explainer Model module : {low_module}')

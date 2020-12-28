@@ -645,7 +645,7 @@ class Module(nn.Module):
         '''
         single string for task_id and annotation repeat idx
         '''
-        return "%s_%s" % (ex['task_id'], str(ex['repeat_idx']))
+        return "%s_%s" % (ex['task_id'], str(ex.get('repeat_idx', 0)))
 
     def make_sampled_debug(self, preds, data, temperature, debug=None):
         '''
@@ -715,10 +715,12 @@ class Module(nn.Module):
         '''
         load preprocessed json from disk
         '''
-        if self.demo_mode:
-            json_name = 'demo_%d.json' % task['repeat_idx'] 
-        else:
-            json_name = 'ann_%d.json' % task['repeat_idx']
+        # if self.demo_mode:
+        #     json_name = 'demo_%d.json' % task['repeat_idx'] 
+        # else:
+        #     json_name = 'ann_%d.json' % task['repeat_idx']
+        json_name = 'ann_%d.json' % task['repeat_idx']
+
         json_path = os.path.join(self.args.data, task['task'], '%s' % self.args.pp_folder, json_name)
         retry = 0
         while True:
