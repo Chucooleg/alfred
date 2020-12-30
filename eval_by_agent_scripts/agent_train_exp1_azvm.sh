@@ -21,7 +21,7 @@ cd $SCRIPT_HOME
 echo '--------------------------------------------------------------------------------------'
 echo 'Start Experiment 1 - Annotate all failures with Explainer Full, Explainer Aux Loss Only, Baseline'
 # Original Training set with original human annotation, plus new 12k annotated by Explainer full, Explainer Aux Loss only, and Baseline
-export SPLITS=$ALFRED_ROOT/data/splits/data_augmentation_experiment1_20201230.json 
+export SPLITS=$DATA_ROOT/splits/data_augmentation_experiment1_20201230.json 
 # export SPLITS=$DATA_ROOT/splits/agent_augmentation_20201230_toy.json # TOY
 echo Split file $SPLITS
 
