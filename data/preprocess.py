@@ -112,10 +112,11 @@ class Dataset(object):
         vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
         torch.save(self.vocab, vocab_data_path)
 
-    def preprocess_splits_augmentation(self, splits, baseline=False):
+    def preprocess_splits_augmentation(self, splits, lm_tag):
         '''
         Preprocess newly sampled trajectories with explainer or baseline predicted instructions. 
         Augmented data is used for training only.
+        lm_tag: 'baseline', 'explainer'(aux loss only) or 'explainer_full
         '''
         d = splits['augmentation']
 
@@ -125,7 +126,7 @@ class Dataset(object):
         for task in progressbar.progressbar(d):
 
             # make output preprocessed folder
-            preprocessed_folder = os.path.join(self.args.data, task['task'], 'pp_baseline' if baseline else 'pp_explainer')
+            preprocessed_folder = os.path.join(self.args.data, task['task'], 'pp_' + lm_tag)
             if not os.path.isdir(preprocessed_folder):
                 os.makedirs(preprocessed_folder)
 
@@ -141,7 +142,7 @@ class Dataset(object):
             traj['split'] = 'train_aug'            
 
             # numericalize language
-            self.process_language(ex, traj, r_idx, ann_key='baseline_annotations' if baseline else 'explainer_annotations')
+            self.process_language(ex, traj, r_idx, ann_key=lm_tag+'_annotations')
 
             # numericalize actions
             self.process_actions(ex, traj, train=False, language_already_processed=True)            
