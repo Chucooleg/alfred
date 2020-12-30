@@ -325,7 +325,7 @@ class Module(nn.Module):
         '''
         single string for task_id and annotation repeat idx
         '''
-        return "%s_%s" % (ex['task_id'], str(ex['repeat_idx']))
+        return "%s_%s" % (ex['task_id'], str(ex.get('repeat_idx', 0)))
 
     def make_debug(self, preds, data):
         '''
@@ -335,7 +335,7 @@ class Module(nn.Module):
         for task in data:
             ex = self.load_task_json(task)
             
-            is_augmented = ('explainer_annotations' in ex.keys() or 'baseline_annotations' in ex.keys()) and (not 'turk_annotations' in ex.keys()) and self.args.use_augmentation
+            is_augmented = ('explainer_full_annotations' in ex.keys() or 'explainer_annotations' in ex.keys() or 'baseline_annotations' in ex.keys()) and (not 'turk_annotations' in ex.keys()) and self.args.use_augmentation
             if is_augmented:
                 ann_key = '{}_annotations'.format(self.args.augmentation_lang_model)
             else:
@@ -356,7 +356,7 @@ class Module(nn.Module):
         # Use a different data directory and pp folder if this task comes from augmentation data
         if self.args.use_augmentation and 'full_traj_success' in task.keys():
             data_dir = self.args.augmentation_data
-            pp_folder = 'pp_explainer' if self.args.augmentation_lang_model == 'explainer' else 'pp_baseline'
+            pp_folder = 'pp_' + self.args.autogeneration_lang_model
         else:
             data_dir = self.args.data
             pp_folder = self.args.pp_folder
@@ -376,7 +376,7 @@ class Module(nn.Module):
         returns the folder path of a trajectory
         '''
         # TODO a bit hacky
-        is_augmented = ('explainer_annotations' in ex.keys() or 'baseline_annotations' in ex.keys()) and (not 'turk_annotations' in ex.keys()) and self.args.use_augmentation
+        is_augmented = ('explainer_full_annotations' in ex.keys()  or 'explainer_annotations' in ex.keys() or 'baseline_annotations' in ex.keys()) and (not 'turk_annotations' in ex.keys()) and self.args.use_augmentation
 
         if is_augmented:
             data_dir = self.args.augmentation_data

@@ -154,7 +154,7 @@ class Dataset(object):
 
         # save vocab in data path
         vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
-        torch.save(self.vocab, vocab_data_path)             
+        torch.save(self.vocab, vocab_data_path) 
 
 
     def preprocess_splits_augmentation_temperature_sampled(self, splits, filename, timestamp):
