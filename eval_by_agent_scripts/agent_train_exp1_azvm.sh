@@ -27,6 +27,6 @@ echo Split file $SPLITS
 
 echo '-------------------------------'
 # 1.1 With failure annotation by the explainer
-export AUGMENTATION_LANG_MODEL=baseline
+export AUGMENTATION_LANG_MODEL=baseline # switch between baseline, explainer, explainer_full
 # training and eval_script
 bash $SCRIPT_HOME/exp_1_train_azvm.sh
