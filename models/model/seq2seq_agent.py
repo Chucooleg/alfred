@@ -356,15 +356,16 @@ class Module(nn.Module):
         # Use a different data directory and pp folder if this task comes from augmentation data
         if self.args.use_augmentation and 'full_traj_success' in task.keys():
             data_dir = self.args.augmentation_data
-            pp_folder = 'pp_' + self.args.autogeneration_lang_model
+            pp_folder = 'pp_' + self.args.augmentation_lang_model
         else:
             data_dir = self.args.data
             pp_folder = self.args.pp_folder
 
-        if getattr(self.args, 'use_autogeneration', False) and (task.get('use_autogeneration', False)):
-            json_prefix = 'aug_{}'.format(self.args.autogeneration_lang_model)
-        else:
-            json_prefix = 'ann'
+        # if getattr(self.args, 'use_augmentation', False) and (task.get('use_augmentation', False)):
+        #     json_prefix = 'aug_{}'.format(self.args.augmentation_lang_model)
+        # else:
+        #     json_prefix = 'ann'
+        json_prefix = 'ann'
         json_path = os.path.join(data_dir, task['task'], '%s' % pp_folder, '{}_{}.json'.format(json_prefix, task['repeat_idx']))
         with open(json_path) as f:
             data = json.load(f)
