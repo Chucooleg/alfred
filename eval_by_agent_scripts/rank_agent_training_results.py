@@ -24,13 +24,16 @@ if __name__ == '__main__':
 
     for e in range(30):
         fname = 'stats_epoch_' + str(e) + '.json'
-        f_p = os.path.join(dir_p, fname)
-        with open(f_p, 'r') as f:
-            stats = json.load(f)
-        valid_seen_f1s.append(stats['valid_seen']['action_low_f1'])
-        valid_seen_losses.append(stats['valid_seen']['total_loss'])
-        valid_unseen_f1s.append(stats['valid_unseen']['action_low_f1'])
-        valid_unseen_losses.append(stats['valid_unseen']['total_loss'])
+        try:
+            f_p = os.path.join(dir_p, fname)
+            with open(f_p, 'r') as f:
+                stats = json.load(f)
+            valid_seen_f1s.append(stats['valid_seen']['action_low_f1'])
+            valid_seen_losses.append(stats['valid_seen']['total_loss'])
+            valid_unseen_f1s.append(stats['valid_unseen']['action_low_f1'])
+            valid_unseen_losses.append(stats['valid_unseen']['total_loss'])
+        except:
+            pass
 
     sort_f1 = lambda ls : sorted([(e,v) for e,v in enumerate(ls)], key=lambda x:x[1], reverse=True)
     sort_loss = lambda ls : sorted([(e,v) for e,v in enumerate(ls)], key=lambda x:x[1], reverse=False)
