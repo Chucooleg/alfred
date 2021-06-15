@@ -4,26 +4,27 @@
 # cd /home/legg/alfred/eval_by_agent_scripts/
 
 # General Path Setup
-export ENV_HOME=/root/data/home/hoyeung
+export ENV_HOME=/root/home/legg
 export ALFRED_ROOT=$ENV_HOME/alfred
-export DATA_ROOT=/root/data_alfred
+export DATA_ROOT1=/root/home/legg/data_alfred
+export DATA_ROOT2=/root/media/legg/data-850-evo
 # export BLOB_ROOT=$ENV_HOME/blob_alfred_data/ # for backup to container
 # export BLOB_EXP_DIR=$BLOB_ROOT/exp_all/
-export DATA=$DATA_ROOT/json_feat_2.1.0
+# export DATA=$DATA_ROOT/json_feat_2.1.0
+export DATA=$DATA_ROOT1/json_feat_2.1.0_backup_20200826_agent_training
 export PP=pp
 export MODEL=seq2seq_im_mask
-export AUGMENTATION_DATA=$DATA_ROOT/json_data_augmentation_20200820
+export AUGMENTATION_DATA=$DATA_ROOT2/json_data_augmentation_20200820
 
 # where this script is
 export SCRIPT_HOME=$ALFRED_ROOT/eval_by_agent_scripts/
 cd $SCRIPT_HOME
 
 
-
 echo '--------------------------------------------------------------------------------------'
 echo 'Start Experiment 1 - Annotate all failures with Explainer and with Baseline.  Retrain agent and evaluate'
 # Original Training set with original human annotation, plus failures annotated by Explainer vs with Baseline
-export SPLITS=$DATA_ROOT/splits/data_augmentation_experiment1_20200826.json 
+export SPLITS=$DATA_ROOT1/splits/data_augmentation_experiment1_20200826_redo20210608.json 
 # export SPLITS=$DATA_ROOT/splits/agent_augmentation_20200825.json # TOY
 # export SPLITS=$DATA_ROOT/splits/debug_20200827.json # Debug
 echo Split file $SPLITS

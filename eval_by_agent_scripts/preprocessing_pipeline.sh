@@ -114,5 +114,10 @@ echo "--------------------------------------------------------------------------
 echo "10. Put the splits together"
 # Preprocess_sampled_instructions_for_augmentation_20200825.ipynb
 
+# STEP 10.5
+echo "-------------------------------------------------------------------------------------------------------------------------"
+echo "10.5 Filter away unseen envs from trainingr"
+# Preprocess_sampled_instructions_for_augmentation_20210608.ipynb
+
 # STEP 11 - 13
 # see agent_train_eval.sh
