@@ -4,13 +4,20 @@
 # cd /home/legg/alfred/eval_by_agent_scripts/
 
 # General Path Setup
-export ENV_HOME=/root/home/legg
+
+# # inside docker
+# export ENV_HOME=/root/home/legg
+# export ALFRED_ROOT=$ENV_HOME/alfred
+# export DATA_ROOT1=/root/home/legg/data_alfred
+# export DATA_ROOT2=/root/media/legg/data-850-evo
+
+# outside docker
+export ENV_HOME=/home/legg
 export ALFRED_ROOT=$ENV_HOME/alfred
-export DATA_ROOT1=/root/home/legg/data_alfred
-export DATA_ROOT2=/root/media/legg/data-850-evo
-# export BLOB_ROOT=$ENV_HOME/blob_alfred_data/ # for backup to container
-# export BLOB_EXP_DIR=$BLOB_ROOT/exp_all/
-# export DATA=$DATA_ROOT/json_feat_2.1.0
+export DATA_ROOT1=/home/legg/data_alfred
+export DATA_ROOT2=/media/legg/data-850-evo
+
+
 export DATA=$DATA_ROOT1/json_feat_2.1.0_backup_20200826_agent_training
 export PP=pp
 export MODEL=seq2seq_im_mask
@@ -38,7 +45,7 @@ echo Split file $SPLITS
 echo '-------------------------------'
 echo 'Starting Experiment 1 on baseline'
 # 1.2 With failure annotation by the baseline
-export AUGMENTATION_LANG_MODEL=baseline
+export AUGMENTATION_LANG_MODEL=explainer
 bash $SCRIPT_HOME/exp_1_train_eval.sh
 
 
