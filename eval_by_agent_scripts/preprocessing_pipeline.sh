@@ -66,6 +66,19 @@ python data/preprocess_demo_trajectories.py --data $DATA --splits $SPLITS --expl
 python data/preprocess_demo_trajectories.py --data $DATA --splits $SPLITS --explainer_path $GOAL_EXPLAINER --high_level_goal_explainer
 
 
+# STEP 5.X -- add aux only explainer
+export DATA_ROOT=/root/media/legg/data-850-evo
+export ALFRED_ROOT=/root/data/home/hoyeung/alfred
+
+export DATA=$DATA_ROOT/json_data_augmentation_20200820/
+export SPLITS=$DATA_ROOT/splits/sample_failed_20200820.json
+
+export MODEL_DIR=/root/home/legg/blob_alfred_data/exp_all/
+export EXPLAINER_AUXONLY=$MODEL_DIR/model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_none_dec_axu_loss_weighted_bce_1to2/net_epoch_27.pth
+
+cd $ALFRED_ROOT/
+python data/preprocess_demo_trajectories.py --data $DATA --splits $SPLITS --explainer_path $EXPLAINER_AUXONLY
+
 # STEP 6
 echo "-------------------------------------------------------------------------------------------------------------------------"
 echo "6. preprocess object state features"
