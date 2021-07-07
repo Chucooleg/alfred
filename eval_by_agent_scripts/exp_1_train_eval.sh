@@ -15,21 +15,21 @@ export EVAL_SPLITS=$DATA_ROOT1/splits/oct21.json
 
 # Eval on Validation Seen
 echo 'Start Validation on Seen'
-export AGENT_MODEL=$DOUT/net_epoch_27.pth
+export AGENT_MODEL=$DOUT/net_epoch_14.pth
 export EVAL_SPLIT=valid_seen
-/home/legg/miniconda3/envs/ai2thor/bin/python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 8
+# /home/legg/miniconda3/envs/ai2thor/bin/python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 8
 
 # Eval on Validation Seen - Per Subgoal
 echo 'Start Validation on Seen - Per Subgoal'
-/home/legg/miniconda3/envs/ai2thor/bin/python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 8 --subgoals all
+/home/legg/miniconda3/envs/ai2thor/bin/python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 12 --subgoals all
 
 
 # Eval on Validation Unseen
-echo 'Start Validation on Unseen'
-export AGENT_MODEL=$DOUT/net_epoch_29.pth
-export EVAL_SPLIT=valid_unseen
-/home/legg/miniconda3/envs/ai2thor/bin/python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 8
+# echo 'Start Validation on Unseen'
+# export AGENT_MODEL=$DOUT/net_epoch_23.pth
+# export EVAL_SPLIT=valid_unseen
+# /home/legg/miniconda3/envs/ai2thor/bin/python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 8
 
-# Eval on Validation Unseen - Per Subgoal
-echo 'Start Validation on Unseen - Per Subgoal'
-/home/legg/miniconda3/envs/ai2thor/bin/python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 8 --subgoals all
+# # Eval on Validation Unseen - Per Subgoal
+# echo 'Start Validation on Unseen - Per Subgoal'
+# /home/legg/miniconda3/envs/ai2thor/bin/python models/eval/eval_seq2seq_agent.py --model_path $AGENT_MODEL --data $DATA --splits $EVAL_SPLITS --eval_split $EVAL_SPLIT --model models.model.seq2seq_im_mask --gpu --num_threads 12 --subgoals all

@@ -719,6 +719,7 @@ class Module(nn.Module):
             json_name = 'demo_%d.json' % task['repeat_idx'] 
         else:
             json_name = 'ann_%d.json' % task['repeat_idx']
+        json_name = 'ann_%d.json' % task['repeat_idx']
         json_path = os.path.join(self.args.data, task['task'], '%s' % self.args.pp_folder, json_name)
         retry = 0
         while True:

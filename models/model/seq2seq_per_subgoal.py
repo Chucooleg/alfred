@@ -224,12 +224,16 @@ class Module(Base):
             time_report['featurize_input_resnet_features'] += time.time() - start_time
             # -----------loading state features------------------
 
-            if self.encoder_addons != 'none' and self.decoder_addons != 'none':
-
+            if self.encoder_addons != 'none' or self.decoder_addons != 'none':
+                
                 states_root = root.replace('train/', '').replace('valid_seen/', '').replace('valid_unseen/', '')
                 
-                with open(os.path.join(states_root, '{}/extracted_feature_states.json'.format(self.pp_folder)), 'r') as f:
-                    obj_states = json.load(f)
+                try:
+                    with open(os.path.join(states_root, '{}/extracted_feature_states.json'.format(self.pp_folder)), 'r') as f:
+                        obj_states = json.load(f)
+                except:
+                    with open(os.path.join(states_root, 'extracted_feature_states.json'), 'r') as f:
+                        obj_states = json.load(f)                    
 
                 for subgoal_i in range(num_subgoals):
                     if self.object_repr == 'type':

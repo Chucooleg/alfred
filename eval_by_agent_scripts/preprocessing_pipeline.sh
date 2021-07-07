@@ -66,18 +66,8 @@ python data/preprocess_demo_trajectories.py --data $DATA --splits $SPLITS --expl
 python data/preprocess_demo_trajectories.py --data $DATA --splits $SPLITS --explainer_path $GOAL_EXPLAINER --high_level_goal_explainer
 
 
-# STEP 5.X -- add aux only explainer
-export DATA_ROOT=/root/media/legg/data-850-evo
-export ALFRED_ROOT=/root/data/home/hoyeung/alfred
-
-export DATA=$DATA_ROOT/json_data_augmentation_20200820/
-export SPLITS=$DATA_ROOT/splits/sample_failed_20200820.json
-
-export MODEL_DIR=/root/home/legg/blob_alfred_data/exp_all/
-export EXPLAINER_AUXONLY=$MODEL_DIR/model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_none_dec_axu_loss_weighted_bce_1to2/net_epoch_27.pth
-
-cd $ALFRED_ROOT/
-python data/preprocess_demo_trajectories.py --data $DATA --splits $SPLITS --explainer_path $EXPLAINER_AUXONLY
+# STEP 5.X -- add aux only explainer. enc state only explainer
+preprocess_action_tokens_for_LM.ipynb
 
 # STEP 6
 echo "-------------------------------------------------------------------------------------------------------------------------"
@@ -85,6 +75,8 @@ echo "6. preprocess object state features"
 cd $ALFRED_ROOT/
 python data/preprocess_demo_object_states.py --data $DATA --splits $SPLITS --explainer_path $EXPLAINER  # BASELINE/GOAL_EXPLAINER doesn't need this step
 
+# STEP 6.X -- add aux only explainer. enc state only explainer
+States_Data_Structure_augmentation.ipynb # hack copy files
 
 # STEP 6
 echo "-------------------------------------------------------------------------------------------------------------------------"
@@ -101,13 +93,25 @@ cd $ALFRED_ROOT/
 export SPLITS=$DATA_ROOT/splits/sample_failed_20200820_filtered.json
 
 # first, move data under the split folder ?
-python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $SPLITS --low_level_explainer_checkpt_path $EXPLAINER --high_level_explainer_checkpt_path $GOAL_EXPLAINER --gpu
-python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $SPLITS --low_level_explainer_checkpt_path $BASELINE --high_level_explainer_checkpt_path $GOAL_EXPLAINER --gpu --baseline
+python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $SPLITS --low_level_explainer_checkpt_path $EXPLAINER --high_level_explainer_checkpt_path $GOAL_EXPLAINER --lmtag explainer
+python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $SPLITS --low_level_explainer_checkpt_path $BASELINE --high_level_explainer_checkpt_path $GOAL_EXPLAINER --gpu --lmtag baseline
+
+# STEP 7.X -- add aux only explainer. enc state only explainer
+export DATA_ROOT=/root/media/legg/data-850-evo
+export SPLIT_ROOT=/root/home/legg/data_alfred
+export MODEL_DIR=/root/home/legg/data_alfred/exp/ref_copy
+export SPLITS=$SPLIT_ROOT/splits/sample_failed_20200820_filtered.json
+export DATA=$DATA_ROOT/json_data_augmentation_20200820/
+export EXPLAINER_AUXONLY=$MODEL_DIR/model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_none_dec_axu_loss_weighted_bce_1to2/net_epoch_32.pth
+export EXPLAINER_ENCONLY=$MODEL_DIR/model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_axu_loss_none/net_epoch_5.pth
+export GOAL_EXPLAINER=$MODEL_DIR/model:seq2seq_nl_with_frames,name:v1.5_epoch_50_high_level_instrs/net_epoch_10.pth
+
+cp /root/home/legg/blob_alfred_data/unlabeled_12k_20201206/seen/objects_20200522.object_vocab /root/media/legg/data-850-evo/json_data_augmentation_20200820/pp_model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_none_dec_axu_loss_weighted_bce_1to2.object_vocab
+cp /root/media/legg/data-850-evo/json_data_augmentation_20200820/pp_model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_none_dec_axu_loss_weighted_bce_1to2.object_vocab /root/media/legg/data-850-evo/json_data_augmentation_20200820/pp_model:seq2seq_per_subgoal,name:v2_epoch_40_obj_instance_enc_max_pool_dec_axu_loss_none.object_vocab
 
 
-python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $SPLI
-TS --low_level_explainer_checkpt_path $EXPLAINER --high_level_explainer_checkpt_path $GOAL_EXPLAINER --gpu --fast_epoch
-
+python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $SPLITS --low_level_explainer_checkpt_path $EXPLAINER_AUXONLY --lmtag explainer_auxonly
+python models/run_demo/explain_full_demo_trajectories.py --data $DATA --splits $SPLITS --low_level_explainer_checkpt_path $EXPLAINER_ENCONLY --lmtag explainer_enconly
 
 # STEP 8
 echo "-------------------------------------------------------------------------------------------------------------------------"

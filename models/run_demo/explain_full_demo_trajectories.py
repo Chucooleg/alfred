@@ -73,7 +73,7 @@ def validate_vocab(args, model, level='low'):
         assert os.path.exists(data_vocab_path), 'data vocab path does not exist, cannot pass sanity check'
         assert torch.load(data_vocab_path) == model.vocab, 'data vocab and model vocab do not match, cannot pass sanity check'
 
-    if level == 'low' and not args.baseline:
+    if level == 'low' and not args.lmtag == 'baseline':
         # validate object vocab
         data_obj_vocab_path = os.path.join(args.data, f'pp_{pp_suffix}.object_vocab')
         if (model.object_vocab is not None) or (os.path.exists(data_obj_vocab_path)):
@@ -104,11 +104,11 @@ def make_demo_output(preds, data, model, level='low'):
     return outputs
 
 
-def write_ann_to_traj(preds, data, model, baseline=False, level='low'):
+def write_ann_to_traj(preds, data, model, lmtag, level='low'):
     '''write predicted language back to trajectory on disk'''
 
     assert level in ['low', 'high']
-    ann_key = 'baseline_annotations' if baseline else 'explainer_annotations'
+    ann_key = lmtag + '_annotations'
 
     for task in data:
         ex = load_task_json(model, task)
@@ -125,7 +125,7 @@ def write_ann_to_traj(preds, data, model, baseline=False, level='low'):
         overwrite_task_json(model, task, ex)
 
 
-def pred_and_save(split, split_name, model, batch_size, dout, baseline=False, level='low', debug=False):
+def pred_and_save(split, split_name, model, batch_size, dout, lmtag, level='low', debug=False):
     assert level in ['low', 'high']
 
     print(f'Processing {split_name} split with {level} level explainer model.')
@@ -142,7 +142,7 @@ def pred_and_save(split, split_name, model, batch_size, dout, baseline=False, le
     print(f'Saving {level} level language instruction outputs for demo to {pred_out_path}')
 
     # write predicted language back to trajectory on disk
-    write_ann_to_traj(split_preds, split, model, baseline, level)
+    write_ann_to_traj(split_preds, split, model, lmtag, level)
     print(f'Overwrote traj data on disk with {level} level language instruction included.')
 
     # make file to debug predictions for 
@@ -164,8 +164,8 @@ def main(args, splits, low_level_model, high_level_model=None):
     for split_name in splits.keys():
         split = splits[split_name]
         if high_level_model is not None:
-            pred_and_save(split, split_name, high_level_model, args.batch, args.dout, baseline=args.baseline, level='high', debug=args.debug)
-        pred_and_save(split, split_name, low_level_model, args.batch, args.dout, baseline=args.baseline, level='low', debug=args.debug)
+            pred_and_save(split, split_name, high_level_model, args.batch, args.dout, args.lmtag, level='high', debug=args.debug)
+        pred_and_save(split, split_name, low_level_model, args.batch, args.dout, args.lmtag, level='low', debug=args.debug)
 
 
 if __name__ == '__main__':
@@ -182,7 +182,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch', help='batch size', default=8, type=int)
 
     # explainer or baseline
-    parser.add_argument('--baseline', help='predicting with baseline (true) or explainer (false)', action='store_true')
+    parser.add_argument('--lmtag', help='lm name. baseline, explainer, explainer_auxonly, explainer_enconly', type=str)
 
     # debugging
     parser.add_argument('--fast_epoch', help='fast epoch during debugging', action='store_true')
@@ -239,8 +239,8 @@ if __name__ == '__main__':
         high_level_model.demo_mode = True
 
     # make sure model vocab is the same vocab used to preprocess data
-    validate_vocab(args, low_level_model, level='low')
-    validate_vocab(args, high_level_model, level='high')
+    # validate_vocab(args, low_level_model, level='low')
+    # validate_vocab(args, high_level_model, level='high')
 
     # to gpu
     if args.gpu:
