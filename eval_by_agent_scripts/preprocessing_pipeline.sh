@@ -47,6 +47,7 @@ python scripts/collect_demo_object_states.py --data $DATA --raw_splits $RAW_SPLI
 # python scripts/collect_demo_object_states.py --data $DATA --raw_splits $RAW_SPLITS --first_task_only
 
 python models/utils/extract_resnet.py --data $DATA --skip_existing
+
 # STEP 5
 echo "-------------------------------------------------------------------------------------------------------------------------"
 echo "5. preprocess action tokens"

@@ -8,6 +8,8 @@ import revtok
 import torch
 import copy
 import progressbar
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+
 from vocab import Vocab
 from model.seq2seq import Module as model
 from gen.utils.py_util import remove_spaces_and_lower
@@ -36,9 +38,6 @@ class Dataset(object):
         '''
         converts words to unique integers
         '''
-        # if action_high: TODO don't need to do this if we do not use the object args in high actions downstream
-        #     words = [w.strip().lower().replace('sink', 'sinkbasin').replace('bathtub', 'bathtubbasin') for w in words]
-        # else:
         words = [w.strip().lower() for w in words]
         return vocab.word2index(words, train=train)
 
@@ -93,12 +92,6 @@ class Dataset(object):
                 preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
                 if not os.path.isdir(preprocessed_folder):
                     os.makedirs(preprocessed_folder)               
-
-                # # save preprocessed json
-                # if demo_mode:
-                #     preprocessed_json_path = os.path.join(preprocessed_folder, "demo_%d.json" % r_idx) # HACKY
-                # else:
-                #     preprocessed_json_path = os.path.join(preprocessed_folder, "ann_%d.json" % r_idx)
                 
                 # save preprocessed json
                 preprocessed_json_path = os.path.join(preprocessed_folder, "ann_%d.json" % r_idx)
@@ -116,11 +109,11 @@ class Dataset(object):
         vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
         torch.save(self.vocab, vocab_data_path)
 
-    def preprocess_splits_augmentation(self, splits, lm_tag):
+    def preprocess_splits_augmentation(self, splits, lmtag, train_vocab=True):
         '''
         Preprocess newly sampled trajectories with explainer or baseline predicted instructions. 
         Augmented data is used for training only.
-        lm_tag: 'baseline', 'explainer'(aux loss only) or 'explainer_full
+        lmtag: 'baseline', 'explainer_auxonly', 'explainer_enconly' or 'explainer_full'
         '''
         d = splits['augmentation']
 
@@ -130,7 +123,7 @@ class Dataset(object):
         for task in progressbar.progressbar(d):
 
             # make output preprocessed folder
-            preprocessed_folder = os.path.join(self.args.data, task['task'], 'pp_' + lm_tag)
+            preprocessed_folder = os.path.join(self.args.data, task['task'], 'pp_' + lmtag)
             if not os.path.isdir(preprocessed_folder):
                 os.makedirs(preprocessed_folder)
 
@@ -146,107 +139,19 @@ class Dataset(object):
             traj['split'] = 'train_aug'            
 
             # numericalize language
-            self.process_language(ex, traj, r_idx, ann_key=lm_tag+'_annotations')
+            self.process_language(ex, traj, r_idx, ann_key=lmtag+'_annotations')
 
             # numericalize actions
-            self.process_actions(ex, traj, train=False, language_already_processed=True)            
+            self.process_actions(ex, traj, train=train_vocab, language_already_processed=True)            
 
             # save out
             preprocessed_json_path = os.path.join(preprocessed_folder, f"ann_{r_idx}.json")
             with open(preprocessed_json_path, 'w') as f:
-                json.dump(traj, f, sort_keys=True, indent=4)               
+                json.dump(traj, f, sort_keys=True, indent=4)
 
         # save vocab in data path
         vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
         torch.save(self.vocab, vocab_data_path) 
-
-
-    def preprocess_splits_augmentation_temperature_sampled(self, splits, filename, timestamp):
-        '''
-        Preprocess Explainer predicted instructions on training set
-        filename: str. e.g. 'explained_instructions_temperature_0.75_T20200810_1829.json', 'baseline_instructions_temperature_0.75_T20200810_1829.json'
-        timestamp: str: '20200810_1829'
-        '''
-        out_prefix = 'aug'
-        if 'explain' in filename:
-            out_prefix += '_explainer'
-        elif 'baseline' in filename:
-            out_prefix += '_baseline'
-
-        # for k in ['train', 'valid_seen', 'valid_unseen']:
-        for k in ['train']: 
-            d = splits[k]
-
-            # debugging:
-            if self.args.fast_epoch:
-                d = d[:16]
-
-            for task in progressbar.progressbar(d):
-                
-                if task['repeat_idx'] == 0:
-
-                    # make output preprocessed folder
-                    preprocessed_folder = os.path.join(self.args.data, task['task'], self.args.pp_folder)
-                    if not os.path.isdir(preprocessed_folder):
-                        os.makedirs(preprocessed_folder)    
-
-                    # load traj file
-                    if os.path.exists(os.path.join(preprocessed_folder, "ann_0.json")):
-                        # load ann_0.json, skip some preprocessing
-                        json_path = os.path.join(preprocessed_folder, "ann_0.json")
-                        use_raw_traj = False
-                    else:
-                        # load raw traj file.
-                        json_path = os.path.join(self.args.data, k, task['task'], 'traj_data.json')
-                        use_raw_traj = True
-                    with open(json_path) as f:
-                        ex = json.load(f)
-                    traj = ex.copy()
-
-                    # load sampled instructions
-                    sampled_instr_json_path = os.path.join(self.args.data, k, task['task'], filename) 
-                    with open(sampled_instr_json_path, 'r') as f:
-                        sampled_instrs = json.load(f)
-
-                    # root & split
-                    traj['root'] = os.path.join(self.args.data, task['task'])
-                    traj['split'] = k
-                    
-                    # numericalize actions for train/valid splits
-                    if 'test' not in k:
-                        self.process_actions(ex, traj, train=False, language_already_processed=False)
-
-                    # loop through 
-                    for r_idx, instrs in enumerate(sampled_instrs):
-                        traj['repeat_idx'] = r_idx
-
-                        self.process_augmented_language(instrs['high_descs'], traj, r_idx)
-
-                        aligment_check = self.check_lang_action_segment_alignments(traj, apply_fix=use_raw_traj)
-
-                        preprocessed_json_path = os.path.join(preprocessed_folder, f"{out_prefix}_{r_idx}_T{timestamp}.json")
-                        with open(preprocessed_json_path, 'w') as f:
-                            json.dump(traj, f, sort_keys=True, indent=4)
-
-
-    def process_augmented_language(self, instrs, traj, r_idx):
-        '''
-        instrs: list of strings each a sentence corresponding to a subgoal. ['turn around and walk to kitchen', 'pick up the knife',...]
-        r_idx: int. usually 0-5. For each groundtruth trace there are multiple lang instructions for it, r_idx index them.
-        instr_type_key: str. 'explained', 'baseline' etc. similar to 'ann'
-        preprocess_goal: boolean. True will preprocess goal from 'turk_annotation'. False will reuse goal from 'ann'
-        '''
-        # reuse goal from  turk annotations
-        goal = traj['turk_annotations']['anns'][r_idx%3]['task_desc']
-        # tokenize and numerical language, save numericalized to traj
-        tokenized_goal, tokenized_instrs = self.numeralize_instr(traj, goal, instrs, train=False)
-
-        # save tokenize to traj       
-        traj['aug'] = {
-            'goal': tokenized_goal,
-            'instr': tokenized_instrs,
-            'repeat_idx': r_idx
-        } 
 
     def process_language(self, ex, traj, r_idx, train=True, ann_key='turk_annotations'):
         '''tokenize language, save to traj['ann'], numeralize language tokens, save to traj['num']'''
@@ -338,7 +243,6 @@ class Dataset(object):
             traj['num']['action_high'].append({
                 'high_idx': a['high_idx'],
                 'action': self.vocab['action_high'].word2index(a['discrete_action']['action'], train=train),
-                # 'action_high_args': self.numericalize(self.vocab['action_high'], a['discrete_action']['args'], train=train, action_high=True), TODO seems not used in pipeline?
             })
 
         # fix if language and action segments are not aligned
@@ -374,7 +278,6 @@ class Dataset(object):
                 'high_idx': len(ex['plan']['high_pddl'])
             })
 
-
     def merge_last_two_low_actions(self, conv):
         '''
         combines the last two action sequences into one sequence
@@ -385,3 +288,88 @@ class Dataset(object):
             conv['num']['action_low'][-3].append(sub)
         del conv['num']['action_low'][-2]
         conv['num']['action_low'][-1][0]['high_idx'] = len(conv['plan']['high_pddl']) - 1
+
+def main(parse_args):
+    '''Preprocess action tokens'''
+
+    # load split
+    with open(parse_args.splits, 'r') as f:
+        splits = json.load(f)
+    print(f'Loaded {len(splits["augmentation"])} number of trajectories in augmentation split.')
+
+    if parse_args.action_tokens_only_for_instruction_labeling:
+
+        # load model
+        ckpt = torch.load(parse_args.model_path)
+        print('Loaded language model and vocab')
+        print('Vocab:', ckpt['vocab'])
+
+        dataset = Dataset(parse_args, ckpt['vocab'])
+        dataset.preprocess_splits(
+            splits, preprocess_lang=False, train_vocab=False, save_vocab_to_dout=False, augmentation_mode=True)
+
+        print('Finished preprocessing action tokens with language model vocab for auto-instruction labeling.')
+
+    else:
+
+        # load vocab
+        if parse_args.optional_agent_vocab_path:
+            vocab = torch.load(parse_args.optional_agent_vocab_path)
+            train_vocab = True
+        else:
+            train_vocab = False
+        print('Vocab:', vocab)
+
+        dataset = Dataset(parse_args, vocab)
+        dataset.preprocess_splits_augmentation(splits, parse_args.lmtag, train_vocab=train_vocab)       
+
+        print('Finished preprocessing action and language tokens for agent training.')
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser()
+
+    parser.add_argument(
+        '--data', help='dataset directory.', type=str
+    )
+    parser.add_argument(
+        '--splits', help='json file containing trajectory splits.', type=str
+    )
+    parser.add_argument(
+        '--fast_epoch', default=False, help='debug run with few examples.'
+    )
+    parser.add_argument(
+        '--model_path', type=str, help='path to instruction generating language model .pth'
+    )
+    parser.add_argument(
+        '--model_name', type=str, 
+        help='model save name. \
+            e.g. model_seq2seq_per_subgoal,name_v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce_1to2'
+    )
+    parser.add_argument(
+        '--action_tokens_only_for_instruction_labeling', action='store_true', 
+        help='only preprocess action tokens using language model vocab for auto-instruction labeling.'
+    )
+    parser.add_argument(
+        '--action_lang_tokens_for_agent_training', action='store_true', 
+        help='preprocess both language and action tokens using agent vocab for agent training.'
+    )
+    parser.add_argument(
+        '--optional_agent_vocab_path', default=None, 
+        help='optional agent vocab referece. default is None. e.g. pp.vocab'
+    )
+    parser.add_argument(
+        '--lmtag', type=str,
+        help='language model tag. "baseline", "explainer_auxonly", "explainer_enconly" or "explainer_full"'
+    )    
+
+    parse_args = parser.parse_args()
+    parse_args.pframe = 300
+    parse_args.pp_folder = 'pp_' + parse_args.model_name
+
+    assert parse_args.action_tokens_only_for_instruction_labeling or parse_args.action_lang_tokens_for_agent_training
+    assert not (
+        parse_args.action_tokens_only_for_instruction_labeling and parse_args.action_lang_tokens_for_agent_training
+    )
+
+    main(parse_args)
