@@ -1,4 +1,4 @@
-'''Evaluate Linguistics metrics for a given language model on valid seen and valid unseen data'''
+'''Evaluate Linguistics metrics for a language model given its predictions on valid seen and valid unseen data'''
 
 import os
 import json
