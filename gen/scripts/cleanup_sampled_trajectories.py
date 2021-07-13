@@ -24,7 +24,7 @@ def print_num_subgoal_distribution(task_to_traj):
         )
     )
 
-def remove_failed_last_step(task_to_traj, data, dout, dout_split, new_split_filename):
+def remove_failed_last_step(task_to_traj, data, clean_subdir, splits_dir, new_split_filename):
     '''
     clean up the collected trajectory to remove the failed last step of any
     partial(i.e. not fully complete) trajectories.
@@ -37,7 +37,7 @@ def remove_failed_last_step(task_to_traj, data, dout, dout_split, new_split_file
 
         # e.g. pick_two_obj_and_place-Bread-None-Microwave-20/trial_T20200817_133657_955225
         task_name_trial_name = '/'.join(task_to_traj[task_name]['best_trial_dir'].split('/')[-2:])
-        traj_data_out_dir = os.path.join(dout, task_name_trial_name)
+        traj_data_out_dir = os.path.join(data, clean_subdir, task_name_trial_name)
 
         if not os.path.exists(os.path.join(traj_data_out_dir, 'traj_data.json')):
             if not os.path.exists(traj_data_out_dir):
@@ -68,7 +68,7 @@ def remove_failed_last_step(task_to_traj, data, dout, dout_split, new_split_file
                 os.path.join(traj_data_out_dir, 'raw_images', image_entry['image_name']))
                 for image_entry in traj_data['images']]
 
-            # save the trajectory to dout.
+            # save the trajectory to clean_subdir.
             traj_data_out_p = os.path.join(traj_data_out_dir, 'traj_data.json')
             with open(traj_data_out_p, 'w') as f:
                 json.dump(traj_data, f)
@@ -83,14 +83,14 @@ def remove_failed_last_step(task_to_traj, data, dout, dout_split, new_split_file
 
     # Write raw split
     # e.g. /data_alfred/splits/sample_failed_20200820_raw.json
-    split_path = os.path.join(dout_split, new_split_filename)
+    split_path = os.path.join(splits_dir, new_split_filename)
     with open(split_path, 'w') as f:
         json.dump({'augmentation':split_entries}, f)
     print(f'Successfully wrote new split to path {split_path}')
 
     return images_to_move
 
-def filter_trajectories(task_name_list, data_dir, sampl_dir):
+def filter_trajectories(task_name_list, data, sampl_subdir):
     '''
     filter down to sampled trajectories with 
     1) at least 1 successful subgoal and 
@@ -105,7 +105,7 @@ def filter_trajectories(task_name_list, data_dir, sampl_dir):
 
         task_info = {'best_trial_dir':None, 'max_collected_subgoals':0, 'full_traj_success':False}
         found_task_dir = False
-        task_dir = os.path.join(data_dir, sampl_dir, task_name)
+        task_dir = os.path.join(data, sampl_subdir, task_name)
 
         if os.path.exists(task_dir):
             found_task_dir = True
@@ -117,7 +117,7 @@ def filter_trajectories(task_name_list, data_dir, sampl_dir):
                     collected_num_subgoals = len(traj_data['plan']['high_pddl'])
                     if os.path.exists(os.path.join(task_dir, trial_dir, 'video.mp4')):
                         # save successful full trajectory
-                        task_info['best_trial_dir'] = os.path.join(sampl_dir, task_name, trial_dir)
+                        task_info['best_trial_dir'] = os.path.join(sampl_subdir, task_name, trial_dir)
                         task_info['max_collected_subgoals'] = collected_num_subgoals
                         task_info['full_traj_success'] = True
                         task_to_traj[task_name] = task_info
@@ -130,7 +130,7 @@ def filter_trajectories(task_name_list, data_dir, sampl_dir):
                             ) > 1:
                             # the last subgoal failed, so remove it from the count
                             task_info['collected_subgoals'] = collected_num_subgoals - 1
-                            task_info['best_trial_dir'] = os.path.join(sampl_dir, task_name, trial_dir)
+                            task_info['best_trial_dir'] = os.path.join(sampl_subdir, task_name, trial_dir)
                             task_info['full_traj_success'] = False
                             task_to_traj[task_name] = task_info        
 
@@ -141,14 +141,14 @@ def filter_trajectories(task_name_list, data_dir, sampl_dir):
     return task_to_traj, missing
  
 def move_images(images_to_move):
-    '''Only copy useful images from sampling directory to dout'''
+    '''Only copy useful images from sampling directory to clean_subdir'''
     dest_paths = []
-    print('Copying images from sampling directory to dout')
+    print('Copying images from sampling directory to clean_subdir')
     for key in progressbar.progressbar(images_to_move.keys()):
         for src_fpath, dest_fpath in images_to_move[key]:
             os.makedirs(os.path.dirname(dest_fpath), exist_ok=True)
             dest_paths.append(shutil.copy(src_fpath, dest_fpath))
-    print(f'Finished copying {len(dest_paths)} images from sampling directory to dout')
+    print(f'Finished copying {len(dest_paths)} images from sampling directory to clean_subdir')
 
 def main(parse_args):
     
@@ -161,46 +161,46 @@ def main(parse_args):
     # 1) at least 1 successful subgoal and 
     # 2) given a task name, the best trial with max number of subgoal
     task_to_traj, missing = filter_trajectories(
-        task_name_list, parse_args.data_dir, parse_args.sampl_dir
+        task_name_list, parse_args.data_root, parse_args.sampl_subdir
     )
 
     print_num_subgoal_distribution(task_to_traj)
 
     images_to_move = remove_failed_last_step(
-        task_to_traj, parse_args.data_dir, parse_args.dout, parse_args.dout_split
+        task_to_traj, parse_args.data_root, parse_args.clean_subdir, parse_args.splits_dir
     )
     move_images(images_to_move)
 
-    print('Finished cleaning up sampled trajectories and saved to dout.')
+    print('Finished cleaning up sampled trajectories and saved to clean_subdir.')
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--data_dir', type=str,
-        help="where the new trajectories are saved. \
-              e.g. /data_alfred/sampled/"
+        '--data_root', type=str,
+        help="top data directory. \
+              e.g. /data_alfred/", required=True
     )
     parser.add_argument(
-        '--sampl_dir', type=str,
-        help="where the new trajectories are saved. \
-              e.g. new_trajectories_T..."
+        '--sampl_subdir', type=str,
+        help="subdirectory name where the sampled trajectories were saved. \
+              e.g. sampled/new_trajectories_T_../"
     )
     parser.add_argument(
-        '--dout', type=str,
-        help="directory to write cleaned data to. \
-              e.g. /data_alfred/json_data_augmentation_20200820/"
+        '--clean_subdir', type=str,
+        help="subdirectory name where cleaned data will be written to. \
+              e.g. cleaned/new_trajectories_T_../"
     )
     parser.add_argument(
-        '--dout_split', type=str,
+        '--splits_dir', type=str,
         help="directory to write new split to. \
               e.g. /data_alfred/splits/"
     )
     parser.add_argument(
         '--new_split_filename', type=str,
         help="new split filename. \
-              e.g. sample_failed_20200820_raw.json"
+              e.g. sampled_partial_T20200820_raw.json"
     )
     parser.add_argument(
         '--task_names_path', type=str,

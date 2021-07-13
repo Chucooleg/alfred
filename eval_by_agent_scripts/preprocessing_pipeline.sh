@@ -134,7 +134,7 @@ echo "10. Put the splits together"
 
 # STEP 10.5
 echo "-------------------------------------------------------------------------------------------------------------------------"
-echo "10.5 Filter away unseen envs from trainingr"
+echo "10.5 Filter away unseen envs from training"
 # Preprocess_sampled_instructions_for_augmentation_20210608.ipynb
 
 # STEP 11 - 13

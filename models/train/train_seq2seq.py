@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--data', help='dataset folder', default='data/json_feat_2.1.0')
     parser.add_argument('--splits', help='json file containing train/dev/test splits', default='data/splits/may17.json')
     parser.add_argument('--preprocess', help='store preprocessed data to json files', action='store_true')
-    parser.add_argument('--pp_folder', help='folder name for preprocessed data', default='pp')
+    parser.add_argument('--pp_folder', help='folder name for preprocessed data')
     parser.add_argument('--object_vocab', help='object_vocab version, should be file with .object_vocab ending. default is none', default='none')
     parser.add_argument('--save_every_epoch', help='save model after every epoch (warning: consumes a lot of space)', action='store_true')
     parser.add_argument('--model', help='model to use', default='seq2seq_nl_baseline')
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     parser.add_argument('--reweight_aux_bce', help='reweight binary CE for auxiliary tasks', action='store_true')
 
     # target
-    parser.add_argument('--predict_high_level_goal', help='predict abstract single high level goal for entire task.', action='store_true')
+    parser.add_argument('--predict_goal_level_instruction', help='predict abstract single goal level instruction for entire task.', action='store_true')
 
     # dropouts
     parser.add_argument('--zero_goal', help='zero out goal language', action='store_true')

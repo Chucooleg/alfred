@@ -33,7 +33,7 @@ class Eval(object):
         # load model
         print("Loading: ", self.args.model_path)
         M = import_module(self.args.model)
-        self.model, optimizer, _, _ = M.Module.load(self.args.model_path, {'predict_high_level_goal':False, 'object_repr':None})
+        self.model, optimizer, _, _ = M.Module.load(self.args.model_path, {'predict_goal_level_instruction':False, 'object_repr':None})
         self.model.share_memory()
         self.model.eval()
         self.model.test_mode = True

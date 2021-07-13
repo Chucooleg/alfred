@@ -151,7 +151,8 @@ class Dataset(object):
 
         # save vocab in data path
         vocab_data_path = os.path.join(self.args.data, '%s.vocab' % self.args.pp_folder)
-        torch.save(self.vocab, vocab_data_path) 
+        torch.save(self.vocab, vocab_data_path)
+        print(f'Finished preprocessing augmentation split. A copy of vocab has been saved to {vocab_data_path}')
 
     def process_language(self, ex, traj, r_idx, train=True, ann_key='turk_annotations'):
         '''tokenize language, save to traj['ann'], numeralize language tokens, save to traj['num']'''
@@ -313,8 +314,8 @@ def main(parse_args):
     else:
 
         # load vocab
-        if parse_args.optional_agent_vocab_path:
-            vocab = torch.load(parse_args.optional_agent_vocab_path)
+        if parse_args.optional_agent_vocab_path_for_training:
+            vocab = torch.load(parse_args.optional_agent_vocab_path_for_training)
             train_vocab = True
         else:
             train_vocab = False
@@ -330,10 +331,10 @@ if __name__ == "__main__":
     parser = ArgumentParser()
 
     parser.add_argument(
-        '--data', help='dataset directory.', type=str
+        '--data', help='dataset directory.', type=str, required=True
     )
     parser.add_argument(
-        '--splits', help='json file containing trajectory splits.', type=str
+        '--splits', help='json file containing trajectory splits.', type=str, required=True
     )
     parser.add_argument(
         '--fast_epoch', default=False, help='debug run with few examples.'
@@ -344,7 +345,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '--model_name', type=str, 
         help='model save name. \
-            e.g. model_seq2seq_per_subgoal,name_v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce_1to2'
+            e.g. model_seq2seq_per_subgoal,name_v2_epoch_40_obj_instance_enc_max_pool_dec_aux_loss_weighted_bce_1to2 \
+            for the explainer'
     )
     parser.add_argument(
         '--action_tokens_only_for_instruction_labeling', action='store_true', 
@@ -354,9 +356,10 @@ if __name__ == "__main__":
         '--action_lang_tokens_for_agent_training', action='store_true', 
         help='preprocess both language and action tokens using agent vocab for agent training.'
     )
+
     parser.add_argument(
-        '--optional_agent_vocab_path', default=None, 
-        help='optional agent vocab referece. default is None. e.g. pp.vocab'
+        '--optional_agent_vocab_path_for_training', default=None, 
+        help='optional agent vocab reference used for agent training. default is None.'
     )
     parser.add_argument(
         '--lmtag', type=str,
@@ -371,5 +374,10 @@ if __name__ == "__main__":
     assert not (
         parse_args.action_tokens_only_for_instruction_labeling and parse_args.action_lang_tokens_for_agent_training
     )
+    if parse_args.action_tokens_only_for_instruction_labeling:
+        assert os.path.exists(parse_args.model_path),'must provide language model path for action token preprocessing.'
+        assert os.path.exists(parse_args.model_name),'must provide language model name for action token preprocessing.'
+    else:
+        assert parse_args.lmtag, 'must provide a language model tag (see --lmtag) for language preprocessing.'
 
     main(parse_args)

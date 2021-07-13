@@ -103,8 +103,17 @@ if __name__ == '__main__':
     # preprocess and save
     if args.preprocess:
         print("\nPreprocessing dataset and saving to %s folders ... This will take a while. Do this once as required." % args.pp_folder)
-        dataset = Dataset(args, None)
-        dataset.preprocess_splits(splits)
+        if args.use_augmentation:
+            augmentation_vocab_path = os.path.join(args.augmentation_data, "%s.vocab" % args.pp_folder)
+            assert os.path.exists(augmentation_vocab_path), \
+                'When using data augmentation, please preprocess augmentation data first. \
+                 Run python data/preprocess.py --action_lang_tokens_for_agent_training'
+            vocab = torch.load(augmentation_vocab_path)
+            print(f'Using data augmentation and building on top of existing vocab from {augmentation_vocab_path}')
+            dataset = Dataset(args, vocab)
+        else:
+            dataset = Dataset(args, None)
+        dataset.preprocess_splits(splits) # copy of final vocab will be saved to both args.dout and args.data
         vocab = torch.load(os.path.join(args.dout, "%s.vocab" % args.pp_folder))
     else:
         vocab = torch.load(os.path.join(args.data, "%s.vocab" % args.pp_folder))

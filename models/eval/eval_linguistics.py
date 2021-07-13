@@ -342,13 +342,6 @@ if __name__ == "__main__":
     parser = ArgumentParser()
 
     parser.add_argument(
-        '--data_dir', help='dataset directory.', type=str, required=True,
-    )
-    parser.add_argument(
-        '--splits', help='json file containing raw trajectory splits.', 
-        type=str, required=True,
-    )
-    parser.add_argument(
         '--valid_seen_predictions_path', type=str, required=True,
         help='path to prediction file generated during validation on valid seen set. \
             e.g. dir/valid_seen.debug_epoch_32.preds.json'

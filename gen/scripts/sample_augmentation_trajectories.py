@@ -557,12 +557,16 @@ if __name__ == "__main__":
         help="don't save any data for successful traj (for debugging purposes)"
     )
     parser.add_argument(
-        '--save_path', type=str, help="where to save the success & failure trajectories and data",  
-        default='/root/data_alfred/sampled/new_trajectories/'
+        '--data_root', type=str, help="top data directory \
+            e.g. /data_alfred/", required=True
+    )
+    parser.add_argument(
+        '--save_subdir', type=str, help="subdirectory to save the success & failure trajectories and data, \
+            e.g. sampled/new_trajectories/", required=True
     )
     parser.add_argument(
         '--splits_dir', type=str, help="where to save the split file",  
-        default='/root/data_alfred/splits/'
+        default='/root/data_alfred/splits/', required=True
     )
 
     # debugging settings
@@ -570,7 +574,6 @@ if __name__ == "__main__":
         '--debug', action='store_true', 
         help="print agent env actions info per timestep."
     )
-
     parser.add_argument(
         '--x_display', type=str, required=False, default=constants.X_DISPLAY, help="x_display id"
     )
@@ -587,7 +590,7 @@ if __name__ == "__main__":
 
     # task params from list of previously failed trajectories
     parser.add_argument(
-        '--task_names_path', type=str, 
+        '--task_names_path', type=str, required=True,
         help="path to text file. each line is a task name e.g. look_at_obj_in_light-BaseballBat-None-DeskLamp-301"
     )
 
@@ -608,15 +611,17 @@ if __name__ == "__main__":
     parse_args.seed = None
 
     # each trajectory directory is time stamped by the moment we start collecting them
-    constants.TIME_NOW = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    parse_args.save_path = '/'.join(parse_args.save_path.split('/'))
-    constants.DATA_SAVE_PATH = parse_args.save_path[:-1] + f'_T{constants.TIME_NOW}/'
+    constants.TIME_NOW = parse_args.save_path.rstrip('/')[-8:]
+    parse_args.save_path = os.path.join(parse_args.data_root, parse_args.save_subdir)
+    constants.DATA_SAVE_PATH = parse_args.save_path
 
     start_time = time.time()
 
-    # get task_names from file
+    # get task_names from of previously failed tasks from file
     with open(parse_args.task_names_path, 'r') as f:
         task_names_list = f.read().splitlines()
+
+    os.makedirs(parse_args.save_path, exist_ok=True)
 
     task_names_dict = {}
     if parse_args.in_parallel and parse_args.num_processes > 1:

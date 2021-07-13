@@ -114,12 +114,12 @@ def main(parse_args):
     print('number of trajectories in split = ', len(split))
 
     if parse_args.pre_auto_labeling:
-        
+
         # filter
         error_free_split, _, _ = \
             filter_out_misaligned_action_and_object_states(split, parse_args.data)
         # save the filtered split out
-        filtered_split_name = parse_args.splits.replace('.json', '_filtered.json')
+        filtered_split_name = parse_args.splits.replace('_filtered.json', '_aligned.json')
         with open(filtered_split_name, 'w') as f:
             json.dump(error_free_split, f)
         print(f'Saved filtered split out to {filtered_split_name}')
@@ -152,5 +152,7 @@ if __name__ == "__main__":
     )
 
     parse_args = parser.parse_args()
+    if parse_args.pre_auto_labeling:
+        assert isinstance(parse_args.lm_tags, list) and len(parse_args.lm_tags)
 
     main(parse_args)

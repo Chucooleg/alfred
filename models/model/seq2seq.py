@@ -29,7 +29,7 @@ class Module(nn.Module):
         self.object_vocab = object_vocab
 
         # by 'instance' or 'type'
-        self.object_repr = None if args.predict_high_level_goal else args.object_repr
+        self.object_repr = None if args.predict_goal_level_instruction else args.object_repr
 
         # emb modules
         self.emb_word = nn.Embedding(len(vocab['word']), args.demb)
@@ -39,7 +39,7 @@ class Module(nn.Module):
         else:
             self.emb_object = None
 
-        self.word_stop_token = self.vocab['word'].word2index("<<goal>>" if args.predict_high_level_goal else "<<stop>>", train=False)
+        self.word_stop_token = self.vocab['word'].word2index("<<goal>>" if args.predict_goal_level_instruction else "<<stop>>", train=False)
         self.action_stop_token = self.vocab['action_low'].word2index("<<stop>>", train=False)
         # self.seg_token = self.vocab['action_low'].word2index("<<seg>>", train=False)  # obsolete?
 

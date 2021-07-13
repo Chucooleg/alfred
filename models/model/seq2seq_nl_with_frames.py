@@ -22,7 +22,7 @@ class Module(Base):
         '''
         super().__init__(args, vocab, object_vocab)
 
-        self.predict_high_level_goal = args.predict_high_level_goal
+        self.predict_goal_level_instruction = args.predict_goal_level_instruction
 
         # encoder and self-attention
         encoder = vnn.ActionFrameAttnEncoderFullSeq
@@ -91,7 +91,7 @@ class Module(Base):
                 lang_goal = self.zero_input(lang_goal) if self.args.zero_goal else lang_goal
                 lang_instr = self.zero_input(lang_instr) if self.args.zero_instr else lang_instr
                 
-                if self.predict_high_level_goal:
+                if self.predict_goal_level_instruction:
                     # append goal
                     feat['lang_instr'].append(lang_goal)
                 else:
@@ -300,7 +300,7 @@ class Module(Base):
         # how does this work during training with teacher forcing !?
         m = collections.defaultdict(list)
 
-        if self.predict_high_level_goal:
+        if self.predict_goal_level_instruction:
             flatten_isntr = lambda instr: [word.strip() for word in instr]
         else:
             flatten_isntr = lambda instr: [word.strip() for sent in instr for word in sent]
@@ -312,7 +312,7 @@ class Module(Base):
             # grab task data for ann_0, ann_1 and ann_2
             exs = self.load_task_jsons(task)
             # a list of 3 lists of word tokens. (1 for each human annotation, so total 3)
-            if self.predict_high_level_goal:
+            if self.predict_goal_level_instruction:
                 ref_lang_instrs = [flatten_isntr(ex['ann']['goal']) for ex in exs]
             else:
                 ref_lang_instrs = [flatten_isntr(ex['ann']['instr']) for ex in exs]    
